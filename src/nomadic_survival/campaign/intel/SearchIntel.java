@@ -22,7 +22,8 @@ import java.util.List;
 
 public class SearchIntel extends BaseIntelPlugin {
     enum ButtonID { Apply, AutoApply, FilterUnavailable}
-    enum SortType { SortByDist, DistFromDest, DistFromRoute, SortByValue }
+    enum SortType { DistFromFleet, DistFromDest, DistFromRoute, BestValue }
+    enum FilterType { SurveyNeeded, SkillNeeded, Claimed, Available }
     enum RangeType {
         ShortRange(5), MidRange(10), LongRange(25), UnlimitedRange(Integer.MAX_VALUE);
 
@@ -46,10 +47,11 @@ public class SearchIntel extends BaseIntelPlugin {
     TooltipMakerAPI info;
 
     boolean autoApply = true, filterUnavailable = true;
-    SortType sortType = SortType.SortByDist;
+    SortType sortType = SortType.DistFromFleet;
     RangeType rangeType = RangeType.UnlimitedRange;
     Set<String> selectedOutputs = new HashSet<>();
     Set<String> selectedOps = new HashSet<>();
+    Set<FilterType> selectedFilters = new HashSet<>();
     Map<CommoditySpecAPI, Set<OperationType>> knownOps = new HashMap<>();
 
     public SortType getSortType() {
@@ -58,6 +60,7 @@ public class SearchIntel extends BaseIntelPlugin {
     public RangeType getRangeType() {
         return rangeType;
     }
+
     public boolean isOutputSelected(String commodityID) {
         return selectedOutputs.isEmpty() || selectedOutputs.contains(commodityID);
     }
@@ -133,15 +136,15 @@ public class SearchIntel extends BaseIntelPlugin {
                     .setChecked(filterUnavailable);
         }
 
-        if(ModPlugin.SHOW_SORT_OPTIONS || Global.getSettings().isDevMode()) {
+        if(ModPlugin.SHOW_SORT_OPTIONS) {
             info.addSectionHeading("Sort Order", Alignment.MID, 15);
-            addCheckButton("Distance from Fleet", SortType.SortByDist);
+            addCheckButton("Distance from Fleet", SortType.DistFromFleet);
             addCheckButton("Dist. from Destination", SortType.DistFromDest);
             addCheckButton("Distance from Route", SortType.DistFromRoute);
-            addCheckButton("Profitability", SortType.SortByValue);
+            addCheckButton("Profitability", SortType.BestValue);
         }
 
-        if(ModPlugin.SHOW_FILTER_OPTIONS || Global.getSettings().isDevMode()) {
+        if(ModPlugin.SHOW_FILTER_OPTIONS) {
             info.addSectionHeading("Filter by Range", Alignment.MID, 15);
             addCheckButton(RangeType.UnlimitedRange.getButtonString(), RangeType.UnlimitedRange);
             addCheckButton(RangeType.ShortRange.getButtonString(), RangeType.ShortRange);
@@ -156,7 +159,7 @@ public class SearchIntel extends BaseIntelPlugin {
             }
         }
 
-        if(ModPlugin.SHOW_OP_FILTERS || Global.getSettings().isDevMode()) {
+        if(ModPlugin.SHOW_OP_FILTERS) {
             boolean headingStillNeeded = true;
             for (String outID : selectedOutputs) {
                 CommoditySpecAPI out = Global.getSector().getEconomy().getCommoditySpec(outID);

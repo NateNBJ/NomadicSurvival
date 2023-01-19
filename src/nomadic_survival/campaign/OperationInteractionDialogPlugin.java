@@ -7,8 +7,10 @@ import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
+import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.Alignment;
+import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.ui.ValueDisplayMode;
 import com.fs.starfarer.api.util.Misc;
 import nomadic_survival.OperationType;
@@ -18,12 +20,14 @@ import nomadic_survival.campaign.rulecmd.SUN_NS_ConsiderPlanetaryOperations;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.*;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageEntity.COST_HEIGHT;
 
 public class OperationInteractionDialogPlugin implements InteractionDialogPlugin {
-    private enum OptionId {
+    public enum OptionId {
         INIT,
         CONSIDER,
         TOGGLE_PRESERVATION,
@@ -39,10 +43,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     private InteractionDialogAPI dialog;
     private TextPanelAPI text;
     private OptionPanelAPI options;
-    private VisualPanelAPI visual;
     private CampaignFleetAPI playerFleet;
-    private PlanetAPI planet;
-    private int optionIndex;
     private int maxCapacityReduction = 0;
     private InteractionDialogPlugin formerPlugin;
     private OperationType type;
@@ -58,9 +59,9 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     private ResourceCostPanelAPI costPanel;
     private String outputName;
 
-    public OperationInteractionDialogPlugin(InteractionDialogPlugin formerPlugin, int optionIndex) {
+    public OperationInteractionDialogPlugin(InteractionDialogPlugin formerPlugin, OperationIntel intel) {
         this.formerPlugin = formerPlugin;
-        this.optionIndex = optionIndex;
+        this.intel = intel;
     }
 
     public void init(InteractionDialogAPI dialog) {
@@ -69,18 +70,11 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         text = dialog.getTextPanel();
         options = dialog.getOptionPanel();
         playerFleet = Global.getSector().getPlayerFleet();
-        planet = Util.getInteractionPlanet(dialog);
-        intel = OperationIntel.getAllForPlanet(planet).get(optionIndex);
         type = intel.getType();
         useAbundance = type.isAbundanceRequired() || intel.isAbundanceAvailable();
         outputName = type.getOutput().getLowerCaseName();
 
-        recalculateBatchLimit();
-
-        prevSelectedBatches = selectedBatches;
-
         dialog.setOptionOnEscape("Leave", OptionId.LEAVE);
-
         optionSelected(null, OptionId.INIT);
     }
 
@@ -115,35 +109,40 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                             Misc.getHighlightColor(), "" + intel.getExcessStored());
                 }
 
-                if (!intel.isDepleted()) {
-                    if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown()) {
-                        float min = playerFleet.getFleetData().getMinCrew();
-                        float curr = playerFleet.getCargo().getCrew();
-
-                        if (curr > min) {
-                            text.addPara("Your " + Util.getShipOrFleet() + " will suffer degraded performance if " +
-                                            "more than %s crew are lost.",
-                                    Misc.getHighlightColor(), (int) (curr - min) + "");
-                        } else {
-                            text.addPara("Your " + Util.getShipOrFleet() + " is already suffering degraded " +
-                                    "performance due to insufficient crew.", Misc.getNegativeHighlightColor());
-                        }
-                    }
-
-                    costPanel = text.addCostPanel("Projected outcome:", COST_HEIGHT, Misc.getTextColor(),
-                            Misc.getDarkPlayerColor());
-                    costPanel.setNumberOnlyMode(true);
-                    costPanel.setWithBorder(false);
-                    costPanel.setAlignment(Alignment.LMID);
-                    costPanel.setComWidthOverride(120);
-
-                    updateExchangeDisplay(maxBatches == 0 ? 1 : selectedBatches);
-                }
-
                 optionSelected(null, OptionId.CONSIDER);
             } break;
             case CONSIDER: {
                 despoil = false;
+
+                if(selectedBatches == 0) {
+                    recalculateBatchLimit();
+                    prevSelectedBatches = selectedBatches;
+
+                    if (!intel.isDepleted()) {
+                        if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown()) {
+                            float min = playerFleet.getFleetData().getMinCrew();
+                            float curr = playerFleet.getCargo().getCrew();
+
+                            if (curr > min) {
+                                text.addPara("Your " + Util.getShipOrFleet() + " will suffer degraded performance if " +
+                                                "more than %s crew are lost.",
+                                        Misc.getHighlightColor(), (int) (curr - min) + "");
+                            } else {
+                                text.addPara("Your " + Util.getShipOrFleet() + " is already suffering degraded " +
+                                        "performance due to insufficient crew.", Misc.getNegativeHighlightColor());
+                            }
+                        }
+
+                        costPanel = text.addCostPanel("Projected outcome:", COST_HEIGHT, Misc.getTextColor(),
+                                Misc.getDarkPlayerColor());
+                        costPanel.setNumberOnlyMode(true);
+                        costPanel.setWithBorder(false);
+                        costPanel.setAlignment(Alignment.LMID);
+                        costPanel.setComWidthOverride(120);
+
+                        updateExchangeDisplay(maxBatches == 0 ? 1 : selectedBatches);
+                    }
+                }
 
                 if(intel.getExcessStored() > 0) {
                     options.addOption("Retrieve " + type.getOutput().getLowerCaseName(), OptionId.RETRIEVE);
@@ -158,7 +157,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                             + " is required to perform the operation.";
                 } else if(maxBatchesAvailableInAbundance <= 0) {
                     String atWhat = !type.isAbundanceRequired()
-                            ? " at reduced " + (type.getCostVariance() > 0 ? "risk" : "cost")
+                            ? " at reduced " + (type.isRisky() ? "risk" : "cost")
                             : "";
 
                     atWhat += intel.getAbundancePerMonth() > 0
@@ -204,11 +203,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     String tooltip = null;
 
                     if(maxBatches == maxBatchesPlayerCanStore && maxCapacityReduction > 0) {
-                        String capType, upToMaybe = maxBatchesPlayerCanStore == 1 ? "" : "up to";
-
-                        if(type.getOutput().isFuel()) capType = "fuel tanks";
-                        else if(type.getOutput().isPersonnel()) capType = "crew quarters";
-                        else capType = "cargo holds";
+                        String capType = Util.getCargoTypeName(type.getOutput());
+                        String upToMaybe = maxBatchesPlayerCanStore == 1 ? "" : "up to";
 
                         tooltip = String.format("Your " + Util.getShipOrFleet() +
                                         "'s %s can accommodate the %s gained by " + upToMaybe +
@@ -275,23 +271,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     if(useAbundance) intel.adjustAbundance(-selectedBatches * type.getOutputCountPerBatch());
                 }
 
-                if(intel.isPlanetColonized()) {
-                    FactionAPI claimant = planet.getFaction();
-
-                    if (!claimant.isPlayerFaction()) {
-                        CoreReputationPlugin.CustomRepImpact impact = new CoreReputationPlugin.CustomRepImpact();
-                        impact.delta = playerFleet.isTransponderOn() ? -0.05f : -0.01f;
-
-                        if (impact.delta != 0 && !claimant.isNeutralFaction()) {
-                            Global.getSector().adjustPlayerReputation(
-                                    new CoreReputationPlugin.RepActionEnvelope(CoreReputationPlugin.RepActions.CUSTOM,
-                                            impact, null, text, true, true),
-                                    claimant.getId());
-                        }
-                    }
-                }
-
                 intel.receiveOutput(text, gained);
+                intel.incurRepHitIfTrespass(text);
 
                 if(intel.getExcessStored() > 0) {
                     text.addPara((type.getOutput().isPersonnel() ? "%s " : "%s units of ") + type.getOutput().getLowerCaseName()
@@ -303,6 +284,16 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 }
 
                 Global.getSoundPlayer().playUISound(type.getOutput().getSoundIdDrop(), 1, 1);
+
+                boolean maxBatchesSelected = selectedBatches == maxBatches;
+                recalculateBatchLimit();
+
+                if(maxBatchesSelected && maxBatches > 0) {
+                    prevSelectedBatches = selectedBatches = 0;
+                    options.addOption("Consider another operation", OptionId.CONSIDER);
+                } else {
+                    options.addOption("Consider another operation", OptionId.BACK);
+                }
 
                 options.addOption("Continue", OptionId.LEAVE, null);
                 options.setShortcut(OptionId.LEAVE, Keyboard.KEY_ESCAPE, false, false, false, true);

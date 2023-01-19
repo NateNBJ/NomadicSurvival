@@ -5,14 +5,18 @@ import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
+import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
 import com.fs.starfarer.api.characters.SkillSpecAPI;
+import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.Tags;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
+import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.*;
 import com.fs.starfarer.api.util.Misc;
 import com.thoughtworks.xstream.XStream;
+import nomadic_survival.ConditionAdjustments;
 import nomadic_survival.ModPlugin;
 import nomadic_survival.OperationType;
 import nomadic_survival.Util;
@@ -21,6 +25,8 @@ import org.lwjgl.util.vector.Vector2f;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+
+import static nomadic_survival.OperationType.NO_CONDITION_REQUIRED;
 
 public class OperationIntel extends BaseIntelPlugin {
     public static class Input {
@@ -212,9 +218,15 @@ public class OperationIntel extends BaseIntelPlugin {
         return (int)retVal;
     }
     public float getProfitability(boolean withAbundance) {
-        int inVal = getInputValuePerBatch(withAbundance && !isDepleted());
+        if(getType().isRecycleOp()) {
+            float divisor = (float)getCostMultiplier(withAbundance);
 
-        return inVal == 0 ? Float.POSITIVE_INFINITY : getType().getOutputValuePerBatch() / (float)inVal - 1;
+            return divisor <= 0 ? Float.POSITIVE_INFINITY : 1f / divisor - 1;
+        } else {
+            int inVal = getInputValuePerBatch(withAbundance && !isDepleted());
+
+            return inVal <= 0 ? Float.POSITIVE_INFINITY : getType().getOutputValuePerBatch() / (float) inVal - 1;
+        }
     }
     public int getCurrentAbundance() {
         float monthsSinceLastVisit = Global.getSector().getClock().getElapsedDaysSince(timestampOfLastVisit) / 30f;
@@ -225,6 +237,23 @@ public class OperationIntel extends BaseIntelPlugin {
     }
     public int getCurrentAbundanceBatches() {
         return (int)Math.floor(getCurrentAbundance() / (float)getType().getOutputCountPerBatch());
+    }
+    public ConditionAdjustments getConditionAdjustments() {
+        String conditionID = "";
+        String requiredGroup = getType().getRequiredConditionGroup();
+
+        if(requiredGroup.equals(NO_CONDITION_REQUIRED) || requiredGroup.isEmpty())
+            return ConditionAdjustments.get(NO_CONDITION_REQUIRED);
+
+        for(MarketConditionAPI mc : planet.getMarket().getConditions()) {
+            ConditionGenDataSpec spec = mc.getGenSpec();
+
+            if(spec != null && spec.getGroup() != null && spec.getGroup().equals(requiredGroup)) {
+                return ConditionAdjustments.get(mc.getId());
+            }
+        }
+
+        return ConditionAdjustments.get(conditionID);
     }
     public boolean isPlanetSurveyed() {
         return planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL;
@@ -364,6 +393,23 @@ public class OperationIntel extends BaseIntelPlugin {
             abundancePerMonthFraction = 0;
         }
     }
+    public void incurRepHitIfTrespass(TextPanelAPI text) {
+        if(isPlanetColonized()) {
+            FactionAPI claimant = planet.getFaction();
+
+            if (!claimant.isPlayerFaction()) {
+                CoreReputationPlugin.CustomRepImpact impact = new CoreReputationPlugin.CustomRepImpact();
+                impact.delta = Global.getSector().getPlayerFleet().isTransponderOn() ? -0.05f : -0.01f;
+
+                if (impact.delta != 0 && !claimant.isNeutralFaction()) {
+                    Global.getSector().adjustPlayerReputation(
+                            new CoreReputationPlugin.RepActionEnvelope(CoreReputationPlugin.RepActions.CUSTOM,
+                                    impact, null, text, true, true),
+                            claimant.getId());
+                }
+            }
+        }
+    }
     public void addToIntelManager(boolean markAsNew) {
         addToIntelManager(markAsNew, true, null);
     }
@@ -422,7 +468,7 @@ public class OperationIntel extends BaseIntelPlugin {
 
             if(!getType().isAbundanceRequired()) {
                 para += !isAbundanceAvailable() ? " at reduced " : " at roughly %s ";
-                para += getType().getCostVariance() > 0 ? "risk" : "cost";
+                para += getType().isRisky() ? "risk" : "cost";
                 efficiency = getCostMultiplier(true) > 0
                         ? (int)(getType().getAbundanceCostMult() * 100) + "%"
                         : "no";
@@ -460,57 +506,76 @@ public class OperationIntel extends BaseIntelPlugin {
     public TooltipMakerAPI showExchangeInfo(TooltipMakerAPI info) {
         CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
         Color hlNeg = Misc.getNegativeHighlightColor();
+        Color hl = Misc.getHighlightColor();
         Color hlGray = Misc.getGrayColor();
+        String outputName = getType().getOutput().getLowerCaseName();
 
-        info.addPara("Expected outcome for each " + getType().getBatchName() + ":", 10);
-        info.setBulletedListMode("    - ");
-        info.setTextWidthOverride(LIST_ITEM_TEXT_WIDTH);
-        info.addPara("Gain %s " + getType().getOutput().getLowerCaseName() + " worth %s", 0, Misc.getPositiveHighlightColor(),
-                getType().getOutputCountPerBatch() + "", Misc.getDGSCredits(getType().getOutputValuePerBatch()));
+        if(getType().isRecycleOp()) {
+            info.addPara(Misc.ucFirst(outputName) + " may be reclaimed worth up to %s of the recycled resources.", 10,
+                    hl, (int)(getProfitability(true) * 100 + 100) + "%");
+            info.addPara("Resources that may be recycled:", 10);
+            info.setBulletedListMode("    - ");
+            info.setTextWidthOverride(LIST_ITEM_TEXT_WIDTH);
 
-        for (Input input : getInputs()) {
-            String para = "Lose %s ";
-            int low = input.getCountPerBatch(true);
-            int high = input.getCountPerBatch(false);
-
-            if (getType().isAbundanceRequired()) low = low;
-            else if (isAbundanceRelevant()) para += "or %s ";
-            else low = high;
-
-            if(low > 0 || (high > 0 && isAbundanceRelevant())) {
-                String haveHl = "(" + (int)cargo.getCommodityQuantity(input.getCommodityID()) + ")";
-
-                para += input.getCommodity().getLowerCaseName() + " %s";
-
-                if(getType().isAbundanceRequired() || !isAbundanceRelevant()) {
-                    info.addPara(para, 0, new Color[] { hlNeg, hlGray }, low + "", haveHl);
-                } else {
-                    info.addPara(para, 0, new Color[] { hlNeg, hlNeg, hlGray }, low + "", high + "", haveHl);
-                }
+            for (OperationType.Input input : getType().getInputs()) {
+                info.addPara(input.getCommodity().getName(), 0);
             }
-        }
 
-        info.setBulletedListMode(null);
-        info.setTextWidthOverride(0);
-        String para = "The total value of losses are expected to be %s";
-        int low = getInputValuePerBatch(true);
-        int high = 0;
-
-        if (getType().isAbundanceRequired()) {
-            para += " per " + getType().getBatchName();
-        } else if (isAbundanceRelevant()) {
-            high = getInputValuePerBatch(false);
-            para += " or %s per " + getType().getBatchName() + ", depending on whether or not the " + getType().getOutput().getLowerCaseName()
-                    + " can be acquired at reduced " + (getType().isRiskInvolved() ? "risk" : "cost");
-        } else {
-            low = getInputValuePerBatch(false);
-            para += " per " + getType().getBatchName();
-        }
-
-        if(low > 0 || (high > 0 && isAbundanceRelevant())) {
-            info.addPara(para + ".", 10, Misc.getHighlightColor(), Misc.getDGSCredits(low), Misc.getDGSCredits(high));
+            info.setBulletedListMode(null);
+            info.setTextWidthOverride(0);
 
             showHazardCostAdjustment(info, ListInfoMode.INTEL);
+        } else {
+            info.addPara("Expected outcome for each " + getType().getBatchName() + ":", 10);
+            info.setBulletedListMode("    - ");
+            info.setTextWidthOverride(LIST_ITEM_TEXT_WIDTH);
+            info.addPara("Gain %s " + outputName + " worth %s", 0, Misc.getPositiveHighlightColor(),
+                    getType().getOutputCountPerBatch() + "", Misc.getDGSCredits(getType().getOutputValuePerBatch()));
+
+            for (Input input : getInputs()) {
+                String para = "Lose %s ";
+                int low = input.getCountPerBatch(true);
+                int high = input.getCountPerBatch(false);
+
+                if (getType().isAbundanceRequired()) low = low;
+                else if (isAbundanceRelevant()) para += "or %s ";
+                else low = high;
+
+                if (low > 0 || (high > 0 && isAbundanceRelevant())) {
+                    String haveHl = "(" + (int) cargo.getCommodityQuantity(input.getCommodityID()) + ")";
+
+                    para += input.getCommodity().getLowerCaseName() + " %s";
+
+                    if (getType().isAbundanceRequired() || !isAbundanceRelevant()) {
+                        info.addPara(para, 0, new Color[]{hlNeg, hlGray}, low + "", haveHl);
+                    } else {
+                        info.addPara(para, 0, new Color[]{hlNeg, hlNeg, hlGray}, low + "", high + "", haveHl);
+                    }
+                }
+            }
+
+            info.setBulletedListMode(null);
+            info.setTextWidthOverride(0);
+            String para = "The total value of losses are expected to be %s";
+            int low = getInputValuePerBatch(true);
+            int high = 0;
+
+            if (getType().isAbundanceRequired()) {
+                para += " per " + getType().getBatchName();
+            } else if (isAbundanceRelevant()) {
+                high = getInputValuePerBatch(false);
+                para += " or %s per " + getType().getBatchName() + ", depending on whether or not the " + outputName
+                        + " can be acquired at reduced " + (getType().isRisky() ? "risk" : "cost");
+            } else {
+                low = getInputValuePerBatch(false);
+                para += " per " + getType().getBatchName();
+            }
+
+            if (low > 0 || (high > 0 && isAbundanceRelevant())) {
+                info.addPara(para + ".", 10, hl, Misc.getDGSCredits(low), Misc.getDGSCredits(high));
+
+                showHazardCostAdjustment(info, ListInfoMode.INTEL);
+            }
         }
 
         return info;
@@ -522,12 +587,17 @@ public class OperationIntel extends BaseIntelPlugin {
         this.isSkillRequired = getType().getSkillReqChance() > rand.nextFloat();
 
         if(getType().isAbundancePotentiallyRelevant()) {
+            ConditionAdjustments ca = getConditionAdjustments();
             int incrementCount = 5;
-            int max = incrementCount;
             int min = getType().isAbundanceRequired() ? 2 : 0;
+            int max;
 
+            max = (int)Math.max(min, incrementCount * ca.getAbundancePerMonthCap());
             abundancePerMonthFraction = (min + rand.nextInt(max - min + 1)) / (float)incrementCount;
+
+            max = (int)Math.max(min, incrementCount * ca.getAbundanceCapacityCap());
             abundanceCapacityFraction = (min + rand.nextInt(max - min + 1)) / (float)incrementCount;
+
             abundanceAtLastVisit = isAbundanceConsumedByOtherSource() ? 0 : getAbundanceCapacity();
         }
 
@@ -562,13 +632,15 @@ public class OperationIntel extends BaseIntelPlugin {
 //        float dist = getLYFromPlayer();
 //        info.addPara("Distance: %s" + (dist == 0 ? "" : " LY"), pad, tc, clr, dist == 0 ? "In system" : (int)dist + "");
 
-        if(isPlanetSurveyed()) {
+        if(!isPlanetSurveyed()) {
+            info.addPara("Not yet surveyed", Misc.getNegativeHighlightColor(), pad);
+        } else if(!isRequiredSkillKnown()) {
+            info.addPara("Requires " + getRequiredSkill().getName(), Misc.getNegativeHighlightColor(), pad);
+        } else {
             float profit = getProfitability(true) * 100;
             String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : ((int) profit) + "%";
             if (profit < 0) clr = Misc.getNegativeHighlightColor();
             info.addPara("Profitability: %s", pad, tc, clr, profitStr);
-        } else {
-            info.addPara("Not yet surveyed", Misc.getNegativeHighlightColor(), pad);
         }
     }
 
@@ -659,7 +731,7 @@ public class OperationIntel extends BaseIntelPlugin {
         SearchIntel search = (SearchIntel) Global.getSector().getIntelManager().getFirstIntel(SearchIntel.class);
 
         switch (search.getSortType()) {
-            case SortByDist: {
+            case DistFromFleet: {
                 retVal = Util.alphabetizeNumber(getLYFromPlayer());
             } break;
             case DistFromDest: {
@@ -668,7 +740,7 @@ public class OperationIntel extends BaseIntelPlugin {
             case DistFromRoute: {
                 retVal = Util.alphabetizeNumber(getLYFromRoute());
             } break;
-            case SortByValue: {
+            case BestValue: {
                 float profit = isPlanetSurveyed() ? getProfitability(true) : 0;
 
                 retVal = profit == Float.POSITIVE_INFINITY ? "  " : Util.alphabetizeNumber(100 - profit);

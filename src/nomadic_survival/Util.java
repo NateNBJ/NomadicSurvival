@@ -5,6 +5,7 @@ import com.fs.starfarer.api.campaign.FactionAPI;
 import com.fs.starfarer.api.campaign.InteractionDialogAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
 import com.fs.starfarer.api.impl.campaign.ids.MemFlags;
@@ -188,6 +189,11 @@ public class Util {
     }
     public static String getLengthLimitedString(String str, int maxLength) {
         return str.length() <= maxLength ? str : str.substring(0, 17) + "...";
+    }
+    public static String getCargoTypeName(CommoditySpecAPI commodity) {
+        if(commodity.isFuel()) return "fuel tanks";
+        else if(commodity.isPersonnel()) return "crew quarters";
+        else return "cargo holds";
     }
     public static boolean isPlanetClaimedByNPC(PlanetAPI planet) {
         FactionAPI claimingFaction = Misc.getClaimingFaction(planet);

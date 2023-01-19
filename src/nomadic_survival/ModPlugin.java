@@ -20,8 +20,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.awt.*;
-import java.util.MissingResourceException;
-import java.util.Random;
+import java.util.*;
+import java.util.List;
 
 public class ModPlugin extends BaseModPlugin {
     public final static String
@@ -31,7 +31,8 @@ public class ModPlugin extends BaseModPlugin {
             OPERATIONS_LIST_PATH = "data/config/nomadic_survival/planetary_operations.csv",
             ANOMALY_STAGES_LIST_PATH = "data/config/nomadic_survival/anomaly_stages.csv",
             SURVEYOR_EVENT_BLACKLIST_PATH = "data/config/nomadic_survival/surveyor_event_blacklist.csv",
-            CONDITION_MULT_LIST_PATH = "data/config/nomadic_survival/condition_multipliers.csv";
+            RECYCLE_GROUPS_LIST_PATH = "data/config/nomadic_survival/recycle_groups.csv",
+            CONDITION_ADJUST_LIST_PATH = "data/config/nomadic_survival/condition_adjustments.csv";
 
     public static final int
             MAX_INPUT_TYPES = 3,
@@ -44,7 +45,6 @@ public class ModPlugin extends BaseModPlugin {
             SHOW_FILTER_OPTIONS = false,
             SHOW_OP_FILTERS = true,
             MARK_NEW_OP_INTEL_AS_NEW = true;
-
 
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
@@ -77,7 +77,7 @@ public class ModPlugin extends BaseModPlugin {
             ENABLE_ANOMALY = getBoolean("enableDriveFieldAnomaly");
             ALLOW_ANOMALY_TOGGLE = getBoolean("allowDriveFieldAnomalyToggle");
             SHOW_SORT_OPTIONS = getBoolean("showSortOptions");
-            SHOW_FILTER_OPTIONS = getBoolean("showFilterOptions");
+            //SHOW_FILTER_OPTIONS = getBoolean("showFilterOptions");
             SHOW_OP_FILTERS = getBoolean("showOperationTypeFilters");
             MARK_NEW_OP_INTEL_AS_NEW = getBoolean("markNewOperationIntelAsNew");
 
@@ -92,7 +92,6 @@ public class ModPlugin extends BaseModPlugin {
 
         return true;
     }
-
 
     static ModPlugin instance = null;
 
@@ -171,8 +170,8 @@ public class ModPlugin extends BaseModPlugin {
 //        for (LocationAPI loc : Global.getSector().getAllLocations()) {
 //            for (PlanetAPI planet : loc.getPlanets()) {
 //                if (!planet.isStar()) {
-//                    Util.maybeAddOpToPlanet(planet, "sun_ns_fuel_waystation");
-//                    Util.maybeAddOpToPlanet(planet, "sun_ns_supplies_waystation");
+//                    Util.maybeAddOpToPlanet(planet, "sun_ns_metals_recycle");
+//                    Util.maybeAddOpToPlanet(planet, "sun_ns_organics_recycle");
 //                }
 //            }
 //        }
@@ -189,10 +188,27 @@ public class ModPlugin extends BaseModPlugin {
         try {
             OperationType.INSTANCE_REGISTRY.clear();
             OperationType.REGISTRY_BY_CONDITION_GROUP.clear();
-            ConditionMultipliers.INSTANCE_REGISTRY.clear();
+            ConditionAdjustments.INSTANCE_REGISTRY.clear();
 
-            JSONArray jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("condition_id", CONDITION_MULT_LIST_PATH, ID);
-            for (int i = 0; i < jsonArray.length(); i++) new ConditionMultipliers(jsonArray.getJSONObject(i));
+            JSONArray jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("condition_id", CONDITION_ADJUST_LIST_PATH, ID);
+            for (int i = 0; i < jsonArray.length(); i++) new ConditionAdjustments(jsonArray.getJSONObject(i));
+
+            jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("id", RECYCLE_GROUPS_LIST_PATH, ID);
+            OperationType.RECYCLE_GROUPS.clear();
+            for (int i = 0; i < jsonArray.length(); i++) {
+                JSONObject o = jsonArray.getJSONObject(i);
+                String id = o.getString("id");
+                List<String> commodities = new ArrayList<>();
+
+                String allTags = o.getString("commodity_inputs");
+                if(!allTags.isEmpty()) {
+                    for(String tag : allTags.split(",")) {
+                        commodities.add(tag.trim());
+                    }
+                }
+
+                OperationType.RECYCLE_GROUPS.put(id, commodities);
+            }
 
             jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("id", OPERATIONS_LIST_PATH, ID);
             for (int i = 0; i < jsonArray.length(); i++) new OperationType(jsonArray.getJSONObject(i));
@@ -253,7 +269,10 @@ public class ModPlugin extends BaseModPlugin {
             OperationIntel.loadInstanceRegistry();
             readSettingsIfNecessary(true);
             addScripts();
-            LunaSettingsChangedListener.addToManagerIfNeeded();
+
+            if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+                LunaSettingsChangedListener.addToManagerIfNeeded();
+            }
         } catch (Exception e) { reportCrash(e); }
     }
 

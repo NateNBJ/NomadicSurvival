@@ -1,9 +1,7 @@
 package nomadic_survival.campaign.intel;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.CampaignFleetAPI;
-import com.fs.starfarer.api.campaign.CoreUITabId;
-import com.fs.starfarer.api.campaign.InteractionDialogAPI;
+import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.comm.CommMessageAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.combat.MutableStat;
@@ -100,7 +98,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         }
     }
     enum TabID { Report, Stage, Fuel, CR, Data }
-    enum ButtonID { Toggle, AdvanceStage }
+    enum ButtonID { Toggle, AdvanceStage, ConvertFuel }
 
     public static final float CHECK_BUTTON_HEIGHT = 25;
     public static final String EFFECT_ID = "sun_ns_anomaly_effect";
@@ -116,10 +114,11 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     Stage stage = Stage.Unknown, highestStage = Stage.Unknown;
     TabID selectedTab = TabID.Report;
-    boolean disallowed = false;
+    boolean disallowed = false, convertingExcessFuel = false;
     float lyTraveled = 0, dataProgress = 0, fuelLastFrame = 0;
     Vector2f locLastFrame = new Vector2f();
     CampaignFleetAPI pf;
+    transient ButtonAPI convertCheckbox = null;
 
     public Stage getStage() { return stage; }
     public Stage getNextStage() {
@@ -512,6 +511,12 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 info.addPara("*The fuel range indicator on the map factors in increased consumption from " +
                         "the current anomaly stage, as well as anticipated future stages.", 3, gc, gc);
 
+                String btnName = (convertingExcessFuel ? "" : "Not ") + "Converting Excess Fuel Into Data";
+                convertCheckbox = info.addAreaCheckbox(btnName, ButtonID.ConvertFuel, Misc.getBasePlayerColor(),
+                        Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 10,
+                        false);
+                convertCheckbox.setChecked(convertingExcessFuel);
+
                 int cols = 7;
                 float iconSize = width / cols;
                 List<FleetMemberAPI> ships;
@@ -577,7 +582,29 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     @Override
     protected void advanceImpl(float amount) {
-        if(!ModPlugin.isDoneReadingSettings() || !ModPlugin.ENABLE_ANOMALY || disallowed) {
+        boolean enabled = ModPlugin.isDoneReadingSettings() && ModPlugin.ENABLE_ANOMALY;
+
+        if(convertingExcessFuel && enabled && !Global.getSector().isPaused()) {
+            CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+            float diff = cargo.getFuel() - cargo.getMaxFuel();
+
+            if(diff > 0) {
+                float data = diff / getFuelBurnedToEarnOneData();
+                int wholeData = (int)Math.floor(data);
+                dataProgress += data - wholeData;
+
+                cargo.removeFuel(diff);
+                cargo.addCommodity(ModPlugin.DATA_COMMODITY_ID, wholeData);
+
+                if(wholeData >= 1) {
+                    Global.getSector().getCampaignUI().addMessage("%s units of excess fuel converted into %s data",
+                            Misc.getTextColor(), (int)diff + "", wholeData + "", Misc.getHighlightColor(),
+                            Misc.getBasePlayerColor());
+                }
+            }
+        }
+
+        if(!enabled || disallowed) {
             pf.getStats().getFuelUseHyperMult().unmodify(EFFECT_ID);
             updateLastFrameInfo();
             return;
@@ -754,6 +781,10 @@ public class AnomalyIntel extends BaseIntelPlugin {
                     resetStage();
                 }
                 break;
+                case ConvertFuel: {
+                    convertingExcessFuel = !convertingExcessFuel;
+                }
+                break;
                 case AdvanceStage: {
                     stage = getNextStage();
                     lyTraveled = stage.getLyToReach();
@@ -790,5 +821,24 @@ public class AnomalyIntel extends BaseIntelPlugin {
     @Override
     public boolean shouldRemoveIntel() {
         return super.shouldRemoveIntel() || !ModPlugin.ENABLE_ANOMALY;
+    }
+
+    @Override
+    public void createConfirmationPrompt(Object buttonId, TooltipMakerAPI prompt) {
+        FactionAPI faction = getFactionForUIColors();
+
+        if (buttonId == ButtonID.ConvertFuel) {
+            convertCheckbox.setChecked(convertingExcessFuel);
+            prompt.addPara("It is possible to deliberately trigger the annihilation of fuel in order to collect data " +
+                    "of equal value. Do you want to automatically convert fuel that exceeds your storage " +
+                    "capacity into data?", 0f, Misc.getTextColor(), faction.getBaseUIColor());
+        } else {
+            super.createConfirmationPrompt(buttonId, prompt);
+        }
+    }
+
+    @Override
+    public boolean doesButtonHaveConfirmDialog(Object buttonId) {
+        return buttonId == ButtonID.ConvertFuel && !convertingExcessFuel ? true : super.doesButtonHaveConfirmDialog(buttonId);
     }
 }

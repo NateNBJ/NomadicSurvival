@@ -2,7 +2,6 @@ package nomadic_survival.campaign;
 
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.*;
-import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.characters.FullName;
@@ -14,7 +13,6 @@ import com.fs.starfarer.api.impl.campaign.intel.bar.PortsideBarData;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BaseBarEventWithPerson;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.LabelAPI;
-import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
 import nomadic_survival.campaign.intel.OperationIntel;
@@ -22,8 +20,6 @@ import nomadic_survival.campaign.intel.OperationIntel;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
-
-import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
 public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
     public enum OptionId { INIT, ASK, AGREE, SHOW_INTEL, LEAVE }
@@ -35,7 +31,8 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
     List<OperationIntel> bonusIntel = new ArrayList<>();
 
     public boolean shouldShowAtMarket(MarketAPI market) {
-        return !FACTION_BLACKLIST.contains(market.getFactionId());
+        return !FACTION_BLACKLIST.contains(market.getFactionId())
+                && !OperationIntel.getAllUnknown().isEmpty();
     }
 
     @Override
@@ -60,7 +57,7 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
                         : 1;
 
                 switch (op.getType().getOutputID()) {
-                    case Commodities.FUEL: weight *= 4; break;
+                    case Commodities.FUEL: weight *= 3; break;
                     case Commodities.SUPPLIES: weight *= 3; break;
                     case Commodities.CREW: weight *= 2; break;
                     case Commodities.MARINES: weight *= 2; break;
@@ -75,7 +72,7 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
 
         intel = picker.pick();
 
-        for(int i = 0; i < bonusCount; ++i) {
+        for(int i = 0; i < bonusCount && !picker.isEmpty(); ++i) {
             bonusIntel.add(picker.pickAndRemove());
         }
 

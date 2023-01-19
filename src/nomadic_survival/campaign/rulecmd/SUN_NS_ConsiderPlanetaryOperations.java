@@ -5,7 +5,6 @@ import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.util.Misc;
-import com.fs.starfarer.campaign.CampaignPlanet;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
 import org.lwjgl.input.Keyboard;
@@ -16,8 +15,6 @@ import java.util.Map;
 public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
     @Override
     public boolean execute(String ruleId, InteractionDialogAPI dialog, List<Misc.Token> params, Map<String, MemoryAPI> memoryMap) {
-
-
         TextPanelAPI text = dialog.getTextPanel();
         OptionPanelAPI options = dialog.getOptionPanel();
         PlanetAPI planet = Util.getInteractionPlanet(dialog);
