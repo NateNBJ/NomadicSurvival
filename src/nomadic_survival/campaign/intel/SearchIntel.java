@@ -9,19 +9,21 @@ import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
 import com.fs.starfarer.api.ui.*;
 import com.fs.starfarer.api.util.Misc;
-import nomadic_survival.OperationType;
 import nomadic_survival.ModPlugin;
+import nomadic_survival.OperationType;
 import nomadic_survival.Util;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
 
 import java.awt.*;
 import java.awt.event.InputEvent;
-import java.util.*;
 import java.util.List;
+import java.util.*;
+
+import static com.fs.starfarer.api.impl.campaign.intel.contacts.ContactIntel.TOOLTIP_WIDTH;
 
 public class SearchIntel extends BaseIntelPlugin {
-    enum ButtonID { Apply, AutoApply, FilterUnavailable}
+    enum ButtonID { Apply, AutoApply, FilterUnavailable, FilterType }
     enum SortType { DistFromFleet, DistFromDest, DistFromRoute, BestValue }
     enum FilterType { SurveyNeeded, SkillNeeded, Claimed, Available }
     enum RangeType {
@@ -46,13 +48,13 @@ public class SearchIntel extends BaseIntelPlugin {
     int checkButtonCount = 0;
     TooltipMakerAPI info;
 
-    boolean autoApply = true, filterUnavailable = true;
+    boolean autoApply = true, filterUnavailable = true, filterByInput = false;
     SortType sortType = SortType.DistFromFleet;
     RangeType rangeType = RangeType.UnlimitedRange;
-    Set<String> selectedOutputs = new HashSet<>();
+    Set<String> selectedCommodities = new HashSet<>();
     Set<String> selectedOps = new HashSet<>();
-    Set<FilterType> selectedFilters = new HashSet<>();
     Map<CommoditySpecAPI, Set<OperationType>> knownOps = new HashMap<>();
+//    Set<FilterType> selectedFilters = new HashSet<>();
 
     public SortType getSortType() {
         return sortType;
@@ -61,8 +63,18 @@ public class SearchIntel extends BaseIntelPlugin {
         return rangeType;
     }
 
-    public boolean isOutputSelected(String commodityID) {
-        return selectedOutputs.isEmpty() || selectedOutputs.contains(commodityID);
+    public boolean isCommoditySelected(OperationType type) {
+        if(selectedCommodities.isEmpty()) return true;
+
+        if(isFilteredByInputInsteadOfOutput()) {
+            for(String id : selectedCommodities) {
+                if(type.isInputTaken(id)) return true;
+            }
+
+            return false;
+        } else {
+            return selectedCommodities.contains(type.getOutputID());
+        }
     }
     public boolean isOpSelected(OperationType opType) {
         return selectedOps.isEmpty() || selectedOps.contains(opType.getId());
@@ -73,8 +85,33 @@ public class SearchIntel extends BaseIntelPlugin {
     public boolean isFilterUnavailableSet() {
         return filterUnavailable;
     }
+    public boolean isFilteredByInputInsteadOfOutput() {
+        return filterByInput;
+    }
+    public Map<CommoditySpecAPI, Set<OperationType>> getKnownOpsByOutput() {
+        return knownOps;
+    }
+    public Map<CommoditySpecAPI, Set<OperationType>> getKnownOpsByInput() {
+        Map<CommoditySpecAPI, Set<OperationType>> retVal = new HashMap<>();
 
-    private void addCheckButton(String text, Object key) {
+        for (CommoditySpecAPI spec : Global.getSettings().getAllCommoditySpecs()) {
+            if(knownOps.containsKey(spec)) {
+                for (OperationType type : knownOps.get(spec)) {
+                    for (OperationType.Input in : type.getInputs()) {
+                        if(!retVal.containsKey(in.getCommodity())) {
+                            retVal.put(in.getCommodity(), new HashSet<OperationType>());
+                        }
+
+                        retVal.get(in.getCommodity()).add(type);
+                    }
+                }
+            }
+        }
+
+        return retVal;
+    }
+
+    private ButtonAPI addCheckButton(String text, Object key) {
         boolean selected = false;
 
         if(key instanceof SortType) {
@@ -82,7 +119,7 @@ public class SearchIntel extends BaseIntelPlugin {
         } else if(key instanceof RangeType) {
             selected = rangeType == key;
         } else if(key instanceof String) {
-            selected = selectedOutputs.contains(key);
+            selected = selectedCommodities.contains(key);
         } else if(key instanceof OperationType) {
             selected = selectedOps.contains(((OperationType) key).getId());
         }
@@ -98,6 +135,8 @@ public class SearchIntel extends BaseIntelPlugin {
             info.addSpacer(0f);
             info.getPrev().getPosition().setXAlignOffset(-(box.getPosition().getWidth() + 7));
         }
+
+        return box;
     }
 
     @Override
@@ -124,27 +163,44 @@ public class SearchIntel extends BaseIntelPlugin {
         this.info = info;
         this.checkButtonCount = 0;
 
-        info.addButton("Apply", ButtonID.Apply, width, CHECK_BUTTON_HEIGHT, 10).setEnabled(!isAutoApplySet());
+        if (!isAutoApplySet()) {
+            info.addButton("Apply", ButtonID.Apply, width, CHECK_BUTTON_HEIGHT, 10).setEnabled(!isAutoApplySet());
+        }
 
         info.addAreaCheckbox("Automatically Apply Parameters", ButtonID.AutoApply, Misc.getBasePlayerColor(),
-                Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 3, false)
+                        Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 3, false)
                 .setChecked(autoApply);
 
-        if(Global.getSettings().isDevMode()) {
+        if (Global.getSettings().isDevMode()) {
             info.addAreaCheckbox("Only Show Available Operations", ButtonID.FilterUnavailable, Misc.getBasePlayerColor(),
                             Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 3, false)
                     .setChecked(filterUnavailable);
         }
 
-        if(ModPlugin.SHOW_SORT_OPTIONS) {
+        if (ModPlugin.SHOW_SORT_OPTIONS) {
+            TooltipMakerAPI.TooltipCreator bsTooltip = new TooltipMakerAPI.TooltipCreator() {
+                public boolean isTooltipExpandable(Object tooltipParam) {
+                    return false;
+                }
+                public float getTooltipWidth(Object tooltipParam) {
+                    return TOOLTIP_WIDTH;
+                }
+
+                public void createTooltip(TooltipMakerAPI tooltip, boolean expanded, Object tooltipParam) {
+                    tooltip.addPara("TODO Can not delete or suspend contact at this time.", 0f);
+                }
+            };
+
             info.addSectionHeading("Sort Order", Alignment.MID, 15);
             addCheckButton("Distance from Fleet", SortType.DistFromFleet);
             addCheckButton("Dist. from Destination", SortType.DistFromDest);
+            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
             addCheckButton("Distance from Route", SortType.DistFromRoute);
+            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
             addCheckButton("Profitability", SortType.BestValue);
         }
 
-        if(ModPlugin.SHOW_FILTER_OPTIONS) {
+        if (ModPlugin.SHOW_FILTER_OPTIONS) {
             info.addSectionHeading("Filter by Range", Alignment.MID, 15);
             addCheckButton(RangeType.UnlimitedRange.getButtonString(), RangeType.UnlimitedRange);
             addCheckButton(RangeType.ShortRange.getButtonString(), RangeType.ShortRange);
@@ -152,25 +208,35 @@ public class SearchIntel extends BaseIntelPlugin {
             addCheckButton(RangeType.LongRange.getButtonString(), RangeType.LongRange);
         }
 
-        info.addSectionHeading("Filter by Output Commodity", Alignment.MID, 15);
-        for (CommoditySpecAPI output : Global.getSettings().getAllCommoditySpecs()) {
-            if(knownOps.containsKey(output)) {
-                addCheckButton(output.getName(), output.getId());
+        info.addSectionHeading("Filtering by " + (filterByInput ? "Input" : "Output") + " Commodities", Alignment.MID, 15);
+        info.addButton("Filter by " + (!filterByInput ? "Input" : "Output"), ButtonID.FilterType, width, CHECK_BUTTON_HEIGHT, 3);
+        {
+            Map<CommoditySpecAPI, Set<OperationType>> ops = filterByInput ? getKnownOpsByInput() : getKnownOpsByOutput();
+
+            for (CommoditySpecAPI spec : Global.getSettings().getAllCommoditySpecs()) {
+                if (ops.containsKey(spec)) {
+                    addCheckButton(spec.getName(), spec.getId());
+                }
             }
+
+//            if (ops.size() % 2 == 1) checkButtonCount += 1;
         }
 
         if(ModPlugin.SHOW_OP_FILTERS) {
             boolean headingStillNeeded = true;
-            for (String outID : selectedOutputs) {
-                CommoditySpecAPI out = Global.getSector().getEconomy().getCommoditySpec(outID);
+            for (String id : selectedCommodities) {
+                CommoditySpecAPI spec = Global.getSector().getEconomy().getCommoditySpec(id);
+                Map<CommoditySpecAPI, Set<OperationType>> ops = filterByInput
+                        ? getKnownOpsByInput()
+                        : getKnownOpsByOutput();
 
-                for (OperationType type : knownOps.get(out)) {
-                    if (knownOps.get(out).size() != 1) {
+                for (OperationType type : ops.get(spec)) {
+                    if (ops.get(spec).size() != 1) {
                         if (headingStillNeeded) {
                             info.addSectionHeading("Filter by Operation Type", Alignment.MID, 15);
                             headingStillNeeded = false;
 
-                            if (knownOps.size() % 2 == 1) checkButtonCount += 1;
+                            if (ops.size() % 2 == 1) checkButtonCount += 1;
                         }
 
                         addCheckButton(Util.getLengthLimitedString(type.getPlaceName(), 20), type);
@@ -179,7 +245,7 @@ public class SearchIntel extends BaseIntelPlugin {
             }
         }
 
-        info.addSpacer(-(int)Math.floor(checkButtonCount * 0.5f + 1) * CHECK_BUTTON_HEIGHT);
+        info.addSpacer(-(int)Math.floor(checkButtonCount * 0.5f + 0) * CHECK_BUTTON_HEIGHT);
     }
 
     @Override
@@ -205,6 +271,9 @@ public class SearchIntel extends BaseIntelPlugin {
                 case FilterUnavailable: {
                     filterUnavailable = !filterUnavailable;
                 } break;
+                case FilterType: {
+                    filterByInput = !filterByInput;
+                } break;
             }
         } else if(buttonId instanceof SortType) {
             sortType = (SortType) buttonId;
@@ -212,12 +281,12 @@ public class SearchIntel extends BaseIntelPlugin {
             rangeType = (RangeType) buttonId;
         } else if(buttonId instanceof String) {
             if(ctrlHeld) {
-                if (selectedOutputs.contains(buttonId)) selectedOutputs.remove(buttonId);
-                else selectedOutputs.add((String) buttonId);
+                if (selectedCommodities.contains(buttonId)) selectedCommodities.remove(buttonId);
+                else selectedCommodities.add((String) buttonId);
             } else {
-                boolean unselect = selectedOutputs.contains(buttonId) && selectedOutputs.size() == 1;
-                selectedOutputs.clear();
-                if(!unselect) selectedOutputs.add((String) buttonId);
+                boolean unselect = selectedCommodities.contains(buttonId) && selectedCommodities.size() == 1;
+                selectedCommodities.clear();
+                if(!unselect) selectedCommodities.add((String) buttonId);
             }
         } else if(buttonId instanceof OperationType) {
             String opID = ((OperationType)buttonId).getId();
@@ -232,18 +301,30 @@ public class SearchIntel extends BaseIntelPlugin {
             }
         }
 
-        // Unselect operations if their output commodity is unselected
+        // Unselect operations if their output/input commodity is unselected
         List<String> opsToUnselect = new LinkedList<>();
         for(String id : selectedOps) {
             OperationType op = OperationType.get(id);
+            boolean shouldUnselect = true;
 
-            if(!selectedOutputs.contains(op.getOutputID())) opsToUnselect.add(id);
+            if(filterByInput) {
+                for(String commodityID : selectedCommodities) {
+                    if(op.isInputTaken(commodityID)) {
+                        shouldUnselect = false;
+                        break;
+                    }
+                }
+            } else {
+                shouldUnselect = !selectedCommodities.contains(op.getOutputID());
+            }
+
+            if(shouldUnselect) opsToUnselect.add(id);
         }
         for(String op : opsToUnselect) selectedOps.remove(op);
 
         // No operation button is shown for outputs with only one operation, so those are automatically selected
         if(!selectedOps.isEmpty()) {
-            for (String outID : selectedOutputs) {
+            for (String outID : selectedCommodities) {
                 CommoditySpecAPI out = Global.getSector().getEconomy().getCommoditySpec(outID);
 
                 for (OperationType type : knownOps.get(out)) {

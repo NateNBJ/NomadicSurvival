@@ -1,13 +1,12 @@
 package nomadic_survival.campaign.rulecmd;
 
-import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.*;
+import com.fs.starfarer.api.campaign.InteractionDialogAPI;
+import com.fs.starfarer.api.campaign.PlanetAPI;
+import com.fs.starfarer.api.campaign.TextPanelAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
-import nomadic_survival.CampaignScript;
-import nomadic_survival.ModPlugin;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
 
@@ -38,7 +37,7 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
         } else if(planetIsColonized) {
             text.addPara("The following planetary operations are possible on " + planet.getName() + ":");
         } else {
-            text.addPara("While exploring " + planet.getName() + " your survey team discovered the following " +
+            text.addPara("While exploring " + planet.getName() + ", your survey team discovered the following " +
                     "opportunities for planetary operations:");
         }
         TooltipMakerAPI tt = text.beginTooltip();

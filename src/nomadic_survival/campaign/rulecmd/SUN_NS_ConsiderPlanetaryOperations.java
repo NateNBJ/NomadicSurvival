@@ -35,7 +35,10 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
 
             if(!claimant.isPlayerFaction()) {
                 boolean tOn = Global.getSector().getPlayerFleet().isTransponderOn();
-                String para = claimant.getDisplayNameLongWithArticle()+ " controls " + planet.getName() +
+                String controlOrControls = claimant.getDisplayNameIsOrAre().equalsIgnoreCase("is")
+                        ? " controls "
+                        : " control ";
+                String para = claimant.getDisplayNameLongWithArticle() + controlOrControls + planet.getName() +
                         ", and would consider any planetary operation a trespass. ";
 
                 if(!claimant.getRelToPlayer().isHostile()) {

@@ -5,7 +5,6 @@ import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
 import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
-import com.sun.deploy.util.OrderedHashSet;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -182,6 +181,13 @@ public class OperationType {
     }
     public boolean isRisky() { return tags.contains(Tags.RISKY); }
     public boolean isRecycleOp() { return tags.contains(Tags.RECYCLE); }
+    public boolean isInputTaken(String commodityID) {
+        for(Input in : inputs) {
+            if(in.getCommodityID().equals(commodityID)) return true;
+        }
+
+        return false;
+    }
 
     public List<Input> getInputs() { return inputs; }
 

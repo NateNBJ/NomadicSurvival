@@ -13,7 +13,9 @@ import com.fs.starfarer.api.impl.campaign.ids.Tags;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
 import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
-import com.fs.starfarer.api.ui.*;
+import com.fs.starfarer.api.ui.IntelUIAPI;
+import com.fs.starfarer.api.ui.SectorMapAPI;
+import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 import com.thoughtworks.xstream.XStream;
 import nomadic_survival.ConditionAdjustments;
@@ -23,8 +25,8 @@ import nomadic_survival.Util;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 import static nomadic_survival.OperationType.NO_CONDITION_REQUIRED;
 
@@ -138,7 +140,8 @@ public class OperationIntel extends BaseIntelPlugin {
         return planet;
     }
     public float getLYFromPlayer() {
-        return Misc.getDistanceToPlayerLY(planet); }
+        return Misc.getDistanceToPlayerLY(planet);
+    }
     public float getLYFromDestination() {
         return Misc.getDistanceLY(
                 Global.getSector().getPlayerFleet().getMoveDestination(),
@@ -174,7 +177,7 @@ public class OperationIntel extends BaseIntelPlugin {
 //        return  isNotColonized && isNotDepleted && isNotClaimed;
     }
     public boolean isSkillRequired() {
-        return isSkillRequired;
+        return isSkillRequired && ModPlugin.ENABLE_SKILL_REQUIREMENTS;
     }
     public boolean isRequiredSkillKnown() {
         if(!isSkillRequired()) return true;
@@ -464,6 +467,10 @@ public class OperationIntel extends BaseIntelPlugin {
                 para = "%sNo more ";
             }
 
+            if(getAbundancePerMonth() > 0) {
+                para = "Currently, " + para.toLowerCase();
+            }
+
             para += getType().getOutput().getLowerCaseName() + " can be acquired here";
 
             if(!getType().isAbundanceRequired()) {
@@ -477,7 +484,7 @@ public class OperationIntel extends BaseIntelPlugin {
             }
 
             if(getAbundancePerMonth() > 0) {
-                para += ", currently. Each month up to %s more may become available, up to a limit of %s";
+                para += ". Each month up to %s more may become available, up to a limit of %s";
                 regen += getAbundancePerMonth();
                 cap += getAbundanceCapacity();
             }
@@ -620,6 +627,8 @@ public class OperationIntel extends BaseIntelPlugin {
                 : Misc.getGrayColor();
         Color tc = mode == ListInfoMode.INTEL ? Misc.getGrayColor() : Misc.getTextColor();
         float initPad = (mode == ListInfoMode.IN_DESC) ? opad : pad;
+        boolean showLocalInfo = Global.getSector().getCurrentLocation() == planet.getContainingLocation()
+                && mode == ListInfoMode.INTEL;
 
         info.addPara(getSmallDescriptionTitle(), titleColor, 0f);
 
@@ -629,18 +638,30 @@ public class OperationIntel extends BaseIntelPlugin {
 
         Color clr = Misc.getHighlightColor();
 
+
 //        float dist = getLYFromPlayer();
 //        info.addPara("Distance: %s" + (dist == 0 ? "" : " LY"), pad, tc, clr, dist == 0 ? "In system" : (int)dist + "");
 
         if(!isPlanetSurveyed()) {
+            info.addPara(planet.getName() + ", " + planet.getTypeNameWithWorldLowerCase(), planet.getSpec().getIconColor(), pad);
             info.addPara("Not yet surveyed", Misc.getNegativeHighlightColor(), pad);
         } else if(!isRequiredSkillKnown()) {
             info.addPara("Requires " + getRequiredSkill().getName(), Misc.getNegativeHighlightColor(), pad);
         } else {
+            if(showLocalInfo) {
+                info.addPara(planet.getName() + ", " + planet.getTypeNameWithWorldLowerCase(), planet.getSpec().getIconColor(), pad);
+            }
+
             float profit = getProfitability(true) * 100;
             String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : ((int) profit) + "%";
             if (profit < 0) clr = Misc.getNegativeHighlightColor();
             info.addPara("Profitability: %s", pad, tc, clr, profitStr);
+        }
+
+        if(showLocalInfo) {
+            clr = Misc.getHighlightColor();
+            float dist = Misc.getDistance(planet, Global.getSector().getPlayerFleet()) / 2000f;
+            info.addPara("Distance: %s", pad, tc, clr, "" + Misc.getRoundedValueMaxOneAfterDecimal(dist));
         }
     }
 
@@ -705,7 +726,8 @@ public class OperationIntel extends BaseIntelPlugin {
         if(isImportant()) {
             tags.add(TAG);
         } else if((!search.isFilterUnavailableSet() || isCurrentlyAvailable())
-                && search.isOutputSelected(getType().getOutputID())
+                && (ModPlugin.SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN || isRequiredSkillKnown())
+                && search.isCommoditySelected(getType())
                 && search.isOpSelected(getType())) {
 
             if(search.getRangeType() == SearchIntel.RangeType.UnlimitedRange) {
@@ -732,7 +754,8 @@ public class OperationIntel extends BaseIntelPlugin {
 
         switch (search.getSortType()) {
             case DistFromFleet: {
-                retVal = Util.alphabetizeNumber(getLYFromPlayer());
+                float ly = getLYFromPlayer();
+                retVal = Util.alphabetizeNumber(ly > 0 ? ly : Misc.getDistance(planet, Global.getSector().getPlayerFleet()) / 2000000f);
             } break;
             case DistFromDest: {
                 retVal = Util.alphabetizeNumber(getLYFromDestination());

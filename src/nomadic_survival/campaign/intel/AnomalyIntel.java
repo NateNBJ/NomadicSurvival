@@ -5,6 +5,7 @@ import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.comm.CommMessageAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.combat.MutableStat;
+import com.fs.starfarer.api.combat.ShipHullSpecAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.fleet.RepairTrackerAPI;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
@@ -22,8 +23,8 @@ import org.json.JSONObject;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 public class AnomalyIntel extends BaseIntelPlugin {
     public enum Stage {
@@ -73,12 +74,16 @@ public class AnomalyIntel extends BaseIntelPlugin {
         Excess("Excess", 1.0f);
 
         public static VulnerabilityLevel getForShip(FleetMemberAPI fm) {
+            ShipHullSpecAPI spec = fm.getHullSpec();
+            float travelRange = spec.getFuelPerLY() <= 0 ? Float.MAX_VALUE : spec.getFuel() / spec.getFuelPerLY();
+
             if(fm.getFuelCapacity() == 0) {
                 return Protected;
             } else if(fm.getVariant().hasHullMod(HullMods.CIVGRADE)) {
                 return fm.getVariant().hasHullMod(HullMods.MILITARIZED_SUBSYSTEMS) ? Militarized : Vulnerable;
             } else {
-                return fm.getHullSpec().isCivilianNonCarrier() ? Militarized : Protected;
+                return fm.getHullSpec().isCivilianNonCarrier() || travelRange > MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS
+                        ? Militarized : Protected;
             }
         }
 
@@ -100,6 +105,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
     enum TabID { Report, Stage, Fuel, CR, Data }
     enum ButtonID { Toggle, AdvanceStage, ConvertFuel }
 
+    public static final float MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS = 100;
     public static final float CHECK_BUTTON_HEIGHT = 25;
     public static final String EFFECT_ID = "sun_ns_anomaly_effect";
     public static CommoditySpecAPI getDataCommoditySpec() {
@@ -449,7 +455,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
                                 current ? (s.getFuelConsumptionPercentIncrease() > 0 ? hlNeg : tc) : gc);
 //                        info.addToGrid(2, 0, "", "-" + (int) (s.getCrDecayRate() * 100) + "%",
 //                                current ? (s.getCrDecayRate() > 0 ? hlNeg : tc) : gc);
-                        info.addToGrid(2, 0, "", "" + (int) s.getDataPerLY() + " / LY",
+                        info.addToGrid(2, 0, "", "x" + (int) s.getDataPerLY() + " / LY",
                                 current ? (s.getDataPerLY() > 0 ? hlData : tc) : gc);
                         info.addToGrid(3, 0, "", "" + (int) (s == Stage.Inert ? 0 :s.getLyToReach()) + " LY",
                                 current ? tc : gc);

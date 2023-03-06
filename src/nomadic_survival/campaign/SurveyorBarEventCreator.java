@@ -2,6 +2,7 @@ package nomadic_survival.campaign;
 
 import com.fs.starfarer.api.impl.campaign.intel.bar.PortsideBarEvent;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BaseBarEventCreator;
+import nomadic_survival.ModPlugin;
 
 public class SurveyorBarEventCreator extends BaseBarEventCreator {
     public PortsideBarEvent createBarEvent() {
@@ -10,7 +11,7 @@ public class SurveyorBarEventCreator extends BaseBarEventCreator {
 
     @Override
     public float getBarEventFrequencyWeight() {
-        return super.getBarEventFrequencyWeight() * 5;
+        return super.getBarEventFrequencyWeight() * 5 * ModPlugin.SURVEYOR_BAR_EVENT_FREQUENCY_MULT;
     }
 
     @Override
