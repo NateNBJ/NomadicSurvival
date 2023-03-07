@@ -387,17 +387,13 @@ public class AnomalyIntel extends BaseIntelPlugin {
                                 "Fortunately, the interference can be prevented easily. Information about the " +
                                 "anomaly is in high demand, however, so it may be worthwhile to the suffer its " +
                                 "effects for the sake of observation.", 10);
-                        marketResetExcuse = "For unknown reasons, the gravitonic distortions caused " +
-                                "by spaceports, large orbital constructs, and even black holes stabilize drive " +
-                                "fields affected by the anomaly.";
+                        marketResetExcuse = "For unknown reasons";
                     } else {
                         info.addPara("Ever since the collapse of the gate network, irregularities in the hyperspace " +
                                 "medium have been limiting hyperspace travel due to the destabilizing effects they " +
                                 "have on drive fields. This phenomenon is still not fully understood, and high " +
                                 "quality data concerning it is still valuable and scarce.", 10);
-                        marketResetExcuse = "For reasons that are still unknown, the gravitonic distortions caused " +
-                                "by spaceports, large orbital constructs, and even black holes stabilize drive " +
-                                "fields affected by the anomaly.";
+                        marketResetExcuse = "For reasons that are still unknown";
                     }
 
                     info.addPara(stage.getDescription(), 10, clr, clr, Util.getShipOrFleet());
@@ -406,17 +402,14 @@ public class AnomalyIntel extends BaseIntelPlugin {
                             "practical effects are better understood. The abnormalities in the hyperspace medium " +
                             "destabilize the drive fields of ships the further they travel through hyperspace.", 10);
 
-                    info.addPara(marketResetExcuse, 10, stage == Stage.Inert ? tc : hlNeg);
-
                     info.addPara("As a result of poorly understood quantum mechanisms, sufficient destabilization of " +
                             "drive fields causes the antimatter used in starship fuel to spontaneously " +
                             "self-annihilate. This results in the rapid depletion of fuel stored in poorly shielded " +
                             "hulls.", 10);
 
-//                    info.addPara("As a result of poorly understood quantum mechanisms, sufficient destabilization of " +
-//                            "drive fields causes the antimatter used in starship fuel to spontaneously " +
-//                            "self-annihilate. This results in depletion of fuel and wear on the structures of " +
-//                            "insufficiently reinforced hulls.", 10);
+                    info.addPara(marketResetExcuse + ", the gravitonic distortions caused by spaceports, large " +
+                            "orbital constructs, and even black holes stabilize drive fields affected by the anomaly.",
+                            10);
                 }
             } break;
             case Stage: {
@@ -563,13 +556,14 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 }
 
                 if(stage.getDataPerLY() > 0) {
-                    info.addPara("The current hazard stage allows you to collect %s units of data about the anomaly for " +
+                    String units = stage.getDataPerLY() == 1 ? "unit" : "units";
+                    info.addPara("The current hazard stage allows you to collect %s " + units + " of data about the anomaly for " +
                                     "every light year traveled in hyperspace. Your " + Util.getShipOrFleet() + "'s sensor " +
                                     "strength increases this value by %s, for a total of %s data per light year. ", 10,
                             hlData, (int)stage.getDataPerLY() + "", (int)getDataPercentIncreaseFromSensors() + "%",
                             getTotalDataPerLY() + "");
                     info.addPara("Additionally, you will collect data for every %s units of fuel lost due to " +
-                            " the effects of the anomaly on unprotected fuel.", 10, hl, (int)getFuelBurnedToEarnOneData() + "");
+                            "the effects of the anomaly on unprotected fuel.", 10, hl, (int)getFuelBurnedToEarnOneData() + "");
                 } else if(stage.getFuelConsumptionPercentIncrease() > 0) {
                     info.addPara("The interference from the anomaly has not advanced to the point where you can collect " +
                                     "meaningful data simply by traveling through hyperspace, but you will still collect data " +

@@ -101,7 +101,7 @@ public class Util {
         } else if(OperationIntel.existsForPlanet(planet)) {
             retVal = OperationIntel.getAllForPlanet(planet);
         } else if(Util.isPlanetClaimedByNPC(planet)) {
-            // Prevent ops from spawning at any planet already surveyed at the start of the game
+            // Prevent ops from spawning at planets owned by NPC factions
             retVal = OperationIntel.getAllForPlanet(planet);
         } else {
             retVal = OperationIntel.getAllForPlanet(planet);

@@ -3,12 +3,13 @@ package nomadic_survival;
 import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.ModSpecAPI;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
+import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BarEventManager;
-import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
 import com.thoughtworks.xstream.XStream;
 import lunalib.lunaSettings.LunaSettings;
@@ -26,6 +27,35 @@ import java.util.MissingResourceException;
 import java.util.Random;
 
 public class ModPlugin extends BaseModPlugin {
+    static class Version {
+        public final int MAJOR, MINOR, PATCH, RC;
+
+        public Version(String versionStr) {
+            String[] temp = versionStr.replace("Starsector ", "").replace("a", "").split("-RC");
+
+            RC = temp.length > 1 ? Integer.parseInt(temp[1]) : 0;
+
+            temp = temp[0].split("\\.");
+
+            MAJOR = temp.length > 0 ? Integer.parseInt(temp[0]) : 0;
+            MINOR = temp.length > 1 ? Integer.parseInt(temp[1]) : 0;
+            PATCH = temp.length > 2 ? Integer.parseInt(temp[2]) : 0;
+        }
+
+        public boolean isOlderThan(Version other, boolean ignoreRC) {
+            if(MAJOR < other.MAJOR) return true;
+            if(MINOR < other.MINOR) return true;
+            if(PATCH < other.PATCH) return true;
+            if(!ignoreRC && !other.isOlderThan(this, true) && RC < other.RC) return true;
+
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%d.%d.%d%s-RC%d", MAJOR, MINOR, PATCH, (MAJOR >= 1 ? "" : "a"), RC);
+        }
+    }
     public final static String
             ID = "sun_nomadic_survival",
             PREFIX = "sun_ns_",
@@ -109,6 +139,8 @@ public class ModPlugin extends BaseModPlugin {
         return true;
     }
 
+    static String version = null;
+    static boolean isOperationRefreshNeeded = false;
     static ModPlugin instance = null;
 
     public static ModPlugin getInstance() { return instance; }
@@ -177,7 +209,10 @@ public class ModPlugin extends BaseModPlugin {
 
             while (!picker.isEmpty()) {
                 PlanetAPI planet = picker.pickAndRemove();
-                Util.getOperationsAvailableAtPlanet(planet, Misc.getClaimingFaction(planet) != null);
+                boolean isSurveyed = (planet == null || planet.getMarket() == null) ? false
+                        : planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL;
+
+                Util.getOperationsAvailableAtPlanet(planet, isSurveyed);
             }
 
             MARK_NEW_OP_INTEL_AS_NEW = temp;
@@ -191,6 +226,14 @@ public class ModPlugin extends BaseModPlugin {
 //                }
 //            }
 //        }
+    }
+    public static boolean isUpdateDiagnosticCheckNeeded() {
+        if(version == null || version.equals("")) return true;
+
+        Version lastSavedVersion = new Version(version);
+        Version currentVersion = new Version(Global.getSettings().getModManager().getModSpec(ID).getVersion());
+
+        return lastSavedVersion.isOlderThan(currentVersion, true);
     }
 
     private CampaignScript script;
@@ -274,11 +317,42 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void onApplicationLoad() throws Exception {
         instance = this;
+
+        String message = "";
+
+        try {
+            ModSpecAPI spec = Global.getSettings().getModManager().getModSpec(ID);
+            Version minimumVersion = new Version(spec.getGameVersion());
+            Version currentVersion = new Version(Global.getSettings().getVersionString());
+
+            if(currentVersion.isOlderThan(minimumVersion, false)) {
+                message = String.format("\rThis version of Starsector is too old for %s!" +
+                                "\rPlease make sure Starsector is up to date. (http://fractalsoftworks.com/preorder/)" +
+                                "\rMinimum Version: %s" +
+                                "\rCurrent Version: %s",
+                        spec.getName(), minimumVersion, currentVersion);
+            }
+        } catch (Exception e) {
+            Global.getLogger(this.getClass()).error("Version comparison failed.", e);
+        }
+
+        if(!message.isEmpty()) throw new Exception(message);
     }
 
     @Override
     public void onGameLoad(boolean newGame) {
         try {
+            // This must be done before reading settings to ensure that things trigger in onSettingsSuccessfullyRead
+            if(isUpdateDiagnosticCheckNeeded()) {
+                String oldVersion = version;
+                version = Global.getSettings().getModManager().getModSpec(ID).getVersion();
+
+                Global.getLogger(ModPlugin.class).info("Nomadic Survival version updated from " + oldVersion + " to "
+                        + version + System.lineSeparator() + "Performing update diagnostics...");
+
+                isOperationRefreshNeeded = true;
+            }
+
             removeScripts();
             OperationIntel.loadInstanceRegistry();
             readSettingsIfNecessary(true);
@@ -287,6 +361,7 @@ public class ModPlugin extends BaseModPlugin {
             if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
                 LunaSettingsChangedListener.addToManagerIfNeeded();
             }
+
         } catch (Exception e) { reportCrash(e); }
     }
 
