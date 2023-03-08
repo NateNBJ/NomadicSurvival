@@ -710,7 +710,6 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 int newData = (int)Math.floor(dataProgress);
                 dataProgress -= newData;
                 pf.getCargo().addCommodity(ModPlugin.DATA_COMMODITY_ID, newData);
-                // TODO -  Award xp? Or should that be when sold?
             }
         }
 

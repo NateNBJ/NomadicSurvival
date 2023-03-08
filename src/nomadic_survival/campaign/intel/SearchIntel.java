@@ -20,8 +20,6 @@ import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.*;
 
-import static com.fs.starfarer.api.impl.campaign.intel.contacts.ContactIntel.TOOLTIP_WIDTH;
-
 public class SearchIntel extends BaseIntelPlugin {
     enum ButtonID { Apply, AutoApply, FilterUnavailable, FilterType }
     enum SortType { DistFromFleet, DistFromDest, DistFromRoute, BestValue }
@@ -178,25 +176,25 @@ public class SearchIntel extends BaseIntelPlugin {
         }
 
         if (ModPlugin.SHOW_SORT_OPTIONS) {
-            TooltipMakerAPI.TooltipCreator bsTooltip = new TooltipMakerAPI.TooltipCreator() {
-                public boolean isTooltipExpandable(Object tooltipParam) {
-                    return false;
-                }
-                public float getTooltipWidth(Object tooltipParam) {
-                    return TOOLTIP_WIDTH;
-                }
-
-                public void createTooltip(TooltipMakerAPI tooltip, boolean expanded, Object tooltipParam) {
-                    tooltip.addPara("TODO Can not delete or suspend contact at this time.", 0f);
-                }
-            };
+//            TooltipMakerAPI.TooltipCreator bsTooltip = new TooltipMakerAPI.TooltipCreator() {
+//                public boolean isTooltipExpandable(Object tooltipParam) {
+//                    return false;
+//                }
+//                public float getTooltipWidth(Object tooltipParam) {
+//                    return TOOLTIP_WIDTH;
+//                }
+//
+//                public void createTooltip(TooltipMakerAPI tooltip, boolean expanded, Object tooltipParam) {
+//                    tooltip.addPara("To update sorting by this method you must be in hyperspace and allow some time to pass unpaused.", 0f);
+//                }
+//            };
 
             info.addSectionHeading("Sort Order", Alignment.MID, 15);
             addCheckButton("Distance from Fleet", SortType.DistFromFleet);
             addCheckButton("Dist. from Destination", SortType.DistFromDest);
-            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
+//            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
             addCheckButton("Distance from Route", SortType.DistFromRoute);
-            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
+//            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
             addCheckButton("Profitability", SortType.BestValue);
         }
 

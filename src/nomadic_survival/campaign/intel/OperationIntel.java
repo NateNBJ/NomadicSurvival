@@ -669,7 +669,7 @@ public class OperationIntel extends BaseIntelPlugin {
     public void createSmallDescription(TooltipMakerAPI info, float width, float height) {
         float opad = 10f;
 
-        // TODO - show planet image?
+        // TODO - show planet image if the option becomes practical?
         info.addImages(width, 80, opad, opad * 2f, getType().getOutput().getIconName());
 
         if(isPlanetSurveyed()) {
