@@ -6,11 +6,8 @@ import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
-import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
-import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.Alignment;
-import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.ui.ValueDisplayMode;
 import com.fs.starfarer.api.util.Misc;
 import nomadic_survival.OperationType;
@@ -20,9 +17,7 @@ import nomadic_survival.campaign.rulecmd.SUN_NS_ConsiderPlanetaryOperations;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.*;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 import static com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageEntity.COST_HEIGHT;
 
@@ -425,7 +420,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             selectedBatches = (int)val;
         }
 
-        if(selectedBatches != prevSelectedBatches) {
+        if(selectedBatches != prevSelectedBatches && selectedBatches > 0) {
             clearExchangeDisplay();
             updateExchangeDisplay(selectedBatches);
         }

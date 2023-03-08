@@ -720,6 +720,9 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
             if(stage.ordinal() < Stage.Inert.ordinal() && !ModPlugin.ALLOW_ANOMALY_TOGGLE) {
                 // Then the stage should be increased to base level, as propagation has already happened in-lore
+                setHidden(false);
+                setNew(true);
+                setImportant(true);
                 resetStage();
             } else if(lyTraveled > 0 && isPlayerInteractingWithAnomalyResetSource()) {
                 // Then the stage should be reduced to base level
@@ -741,9 +744,9 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
             while (lyTraveled > getLyToReachNextStage()) {
                 if (stage == Stage.Unknown) {
-                    setImportant(true);
-                    setNew(true);
                     setHidden(false);
+                    setNew(true);
+                    setImportant(true);
                 }
 
                 if(getNextStage() != null) {
