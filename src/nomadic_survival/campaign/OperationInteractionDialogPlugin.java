@@ -53,6 +53,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             maxBatches = 0;
     private ResourceCostPanelAPI costPanel;
     private String outputName;
+    private OptionId stage = null;
 
     public OperationInteractionDialogPlugin(InteractionDialogPlugin formerPlugin, OperationIntel intel) {
         this.formerPlugin = formerPlugin;
@@ -77,9 +78,11 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     public void optionSelected(String optionText, Object optionData) {
         if (optionData == null || !(optionData instanceof  OptionId)) return;
 
+        stage = (OptionId) optionData;
+
         options.clearOptions();
 
-        switch ((OptionId)optionData) {
+        switch (stage) {
             case INIT: {
                 intel.showVisitDescription(text);
 
@@ -365,7 +368,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         CommoditySpecAPI out = type.getOutput();
         CargoAPI cargo = playerFleet.getCargo();
 
-        maxBatches = 99; // Triple digits can cause display issues
+        maxBatches = 50; // Triple digits can cause display issues, and 99 results in some values being impossible to select
         maxBatchesPlayerCanAfford = maxBatches;
         maxBatchesPlayerCanStore = maxBatches;
         maxBatchesAvailableInAbundance = maxBatches;
@@ -420,7 +423,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             selectedBatches = (int)val;
         }
 
-        if(selectedBatches != prevSelectedBatches && selectedBatches > 0) {
+        if(selectedBatches != prevSelectedBatches && stage == OptionId.CONSIDER) {
             clearExchangeDisplay();
             updateExchangeDisplay(selectedBatches);
         }
