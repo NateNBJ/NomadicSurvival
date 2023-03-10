@@ -59,6 +59,9 @@ public class SearchIntel extends BaseIntelPlugin {
         return rangeType;
     }
 
+    public void nullifyInfoField() {
+        this.info = null;
+    }
     public boolean isCommoditySelected(OperationType type) {
         if(selectedCommodities.isEmpty()) return true;
 
@@ -387,9 +390,6 @@ public class SearchIntel extends BaseIntelPlugin {
 
     @Override
     protected void advanceImpl(float amount) {
-        // Ensure this.info won't be saved even if it previously was and createSmallDescription hasn't been called
-        this.info = null;
-
 //        if(Global.getSector().getCampaignUI().isShowingMenu()) {
 //
 //            CampaignUIAPI ui = Global.getSector().getCampaignUI();

@@ -7,6 +7,7 @@ import com.fs.starfarer.api.ModSpecAPI;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
+import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BarEventManager;
@@ -17,6 +18,7 @@ import nomadic_survival.campaign.SurveyorBarEventCreator;
 import nomadic_survival.campaign.SurveyorIntelBarEvent;
 import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.OperationIntel;
+import nomadic_survival.campaign.intel.SearchIntel;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -357,6 +359,11 @@ public class ModPlugin extends BaseModPlugin {
             OperationIntel.loadInstanceRegistry();
             readSettingsIfNecessary(true);
             addScripts();
+
+            // Ensure info field won't be saved even if it previously was and SearchIntel.createSmallDescription hasn't been called
+            for(IntelInfoPlugin intel : Global.getSector().getIntelManager().getIntel(SearchIntel.class)) {
+                ((SearchIntel)intel).nullifyInfoField();
+            }
 
             if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
                 LunaSettingsChangedListener.addToManagerIfNeeded();
