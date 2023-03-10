@@ -1,9 +1,7 @@
 package nomadic_survival.campaign.intel;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.CoreUITabId;
-import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
@@ -389,13 +387,16 @@ public class SearchIntel extends BaseIntelPlugin {
 
     @Override
     protected void advanceImpl(float amount) {
-        if(Global.getSector().getCampaignUI().isShowingMenu()) {
+        // Ensure this.info won't be saved even if it previously was and createSmallDescription hasn't been called
+        this.info = null;
 
-            CampaignUIAPI ui = Global.getSector().getCampaignUI();
-            SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
-           // Global.getSector().getPlayerFleet().getMoveDestination()
-
-        }
+//        if(Global.getSector().getCampaignUI().isShowingMenu()) {
+//
+//            CampaignUIAPI ui = Global.getSector().getCampaignUI();
+//            SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
+//           // Global.getSector().getPlayerFleet().getMoveDestination()
+//
+//        }
     }
 
     @Override
