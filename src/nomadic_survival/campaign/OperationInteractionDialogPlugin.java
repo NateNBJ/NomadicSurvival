@@ -229,7 +229,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 String gainPercent = (int)(type.getDespoilYieldMult() * 100) + "%";
                 String gain = "" + intel.getDespoilYield();
                 String lose = type.isRegenPreventedByDespoiling() && type.isAbundanceRequired()
-                        ? "the ability to " + type.getShortName() + " here."
+                        ? "the ability to " + type.getShortName().toLowerCase() + " here."
                         : "nothing.";
 
                 text.addPara(type.getDespoilDesc(), Misc.getHighlightColor(), gainPercent);

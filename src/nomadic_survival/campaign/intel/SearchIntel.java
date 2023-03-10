@@ -42,9 +42,9 @@ public class SearchIntel extends BaseIntelPlugin {
         return (SearchIntel) Global.getSector().getIntelManager().getFirstIntel(SearchIntel.class);
     }
 
-    float width = 0;
-    int checkButtonCount = 0;
-    TooltipMakerAPI info;
+    transient float width = 0;
+    transient int checkButtonCount = 0;
+    TooltipMakerAPI info; // Set to null to avoid saving it. TODO remove this field or make it transient with next breaking update
 
     boolean autoApply = true, filterUnavailable = true, filterByInput = false;
     SortType sortType = SortType.DistFromFleet;
@@ -244,6 +244,9 @@ public class SearchIntel extends BaseIntelPlugin {
         }
 
         info.addSpacer(-(int)Math.floor(checkButtonCount * 0.5f + 0) * CHECK_BUTTON_HEIGHT);
+
+        // To keep it from getting saved...
+        this.info = null;
     }
 
     @Override
