@@ -121,7 +121,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
     Stage stage = Stage.Unknown, highestStage = Stage.Unknown;
     TabID selectedTab = TabID.Report;
     boolean disallowed = false, convertingExcessFuel = false;
-    float lyTraveled = 0, dataProgress = 0, fuelLastFrame = 0;
+    float lyTraveled = 0, dataProgress = 0, fuelLastFrame = 0, dataEarnedFromTravelThisTrip = 0;
     Vector2f locLastFrame = new Vector2f();
     CampaignFleetAPI pf;
     transient ButtonAPI convertCheckbox = null;
@@ -698,7 +698,9 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
         // Award data
         if(lyLastFrame > 0) {
-            dataProgress += lyLastFrame * stage.getDataPerLY() * getDataMultFromSensors();
+            float newDataFromTravel = lyLastFrame * stage.getDataPerLY() * getDataMultFromSensors();
+            dataProgress += newDataFromTravel;
+            dataEarnedFromTravelThisTrip += newDataFromTravel;
 
             if(fuelSpentLastFrame > 0) {
                 fuelBurnedByAnomaly += fuelSpentLastFrame * (1 - 1 / fuelUseMult);
@@ -736,6 +738,14 @@ public class AnomalyIntel extends BaseIntelPlugin {
                             (int)lyTraveled + "");
                     tt.addImageWithText(3);
                     dialog.getTextPanel().addTooltip();
+
+                    long xpFromTravel = (long)(dataEarnedFromTravelThisTrip) * ModPlugin.XP_PER_DATA_EARNED_FROM_TRAVEL;
+
+                    if(xpFromTravel > 0) {
+                        Global.getSector().getPlayerStats().addXP(xpFromTravel, dialog.getTextPanel());
+                    }
+
+                    dataEarnedFromTravelThisTrip = 0;
                 }
 
                 resetStage();

@@ -37,6 +37,7 @@ public class OperationType {
     public static class Tags {
         public static final String
                 RISKY = "RISKY",
+                REFIT = "REFIT",
                 RECYCLE = "RECYCLE";
     }
     public static final String OCCURRENCE_COUNT_ID_PREFIX = "sun_ns_op_count_";
@@ -181,6 +182,7 @@ public class OperationType {
     }
     public boolean isRisky() { return tags.contains(Tags.RISKY); }
     public boolean isRecycleOp() { return tags.contains(Tags.RECYCLE); }
+    public boolean isRefitOp() { return tags.contains(Tags.REFIT); }
     public boolean isInputTaken(String commodityID) {
         for(Input in : inputs) {
             if(in.getCommodityID().equals(commodityID)) return true;
@@ -286,7 +288,9 @@ public class OperationType {
             }
         }
 
-        if(isRecycleOp()) {
+        if(isRefitOp()) {
+            // Then prevent the other conditionals from being selected
+        } else if(isRecycleOp()) {
             String recycleGroupID = data.getString("input_0_id");
 
             for(String commodityID : RECYCLE_GROUPS.get(recycleGroupID)) {

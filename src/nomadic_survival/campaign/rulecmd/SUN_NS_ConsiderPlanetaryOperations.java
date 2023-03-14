@@ -27,7 +27,10 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
         for(OperationIntel op : operations) {
             String optionID = "sun_ns_exploitPerform" + count++;
 
-            options.addOption(op.getType().getName(), optionID);
+            // Refit operations are displayed elsewhere, but we need to skip past its index
+            if(!op.getType().isRefitOp()) {
+                options.addOption(op.getType().getName(), optionID);
+            }
         }
 
         if(planetIsColonized) {

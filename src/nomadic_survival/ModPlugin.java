@@ -19,14 +19,14 @@ import nomadic_survival.campaign.SurveyorIntelBarEvent;
 import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.OperationIntel;
 import nomadic_survival.campaign.intel.SearchIntel;
+import nomadic_survival.campaign.intel.SearchIntelV2;
+import org.apache.log4j.Logger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.MissingResourceException;
-import java.util.Random;
+import java.util.*;
 
 public class ModPlugin extends BaseModPlugin {
     static class Version {
@@ -58,9 +58,12 @@ public class ModPlugin extends BaseModPlugin {
             return String.format("%d.%d.%d%s-RC%d", MAJOR, MINOR, PATCH, (MAJOR >= 1 ? "" : "a"), RC);
         }
     }
+
     public final static String
             ID = "sun_nomadic_survival",
             PREFIX = "sun_ns_",
+            VERSION_KEY = PREFIX + "version",
+            ADDED_OPERATIONS_KEY = PREFIX + "addedOperations",
             DATA_COMMODITY_ID = "sun_data",
             SETTINGS_PATH = "NOMADIC_SURVIVAL_OPTIONS.ini",
             OPERATIONS_LIST_PATH = "data/config/nomadic_survival/planetary_operations.csv",
@@ -84,6 +87,7 @@ public class ModPlugin extends BaseModPlugin {
             MARK_NEW_OP_INTEL_AS_NEW = true;
 
     public static float SURVEYOR_BAR_EVENT_FREQUENCY_MULT = 1.0f;
+    public static int XP_PER_DATA_EARNED_FROM_TRAVEL = 100;
 
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
@@ -124,6 +128,7 @@ public class ModPlugin extends BaseModPlugin {
             MARK_NEW_OP_INTEL_AS_NEW = getBoolean("markNewOperationIntelAsNew");
             ENABLE_SKILL_REQUIREMENTS = getBoolean("enableSkillRequirements");
             SURVEYOR_BAR_EVENT_FREQUENCY_MULT = getFloat("surveyorBarEventFrequencyMult");
+            XP_PER_DATA_EARNED_FROM_TRAVEL = getInt("xpPerDataEarnedFromTravel");
 
 
             if(settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
@@ -142,7 +147,7 @@ public class ModPlugin extends BaseModPlugin {
     }
 
     static String version = null;
-    static boolean isOperationRefreshNeeded = false;
+    static boolean updatedToNewVersion = false;
     static ModPlugin instance = null;
 
     public static ModPlugin getInstance() { return instance; }
@@ -218,24 +223,56 @@ public class ModPlugin extends BaseModPlugin {
             }
 
             MARK_NEW_OP_INTEL_AS_NEW = temp;
+        } else if(updatedToNewVersion) {
+            Set<String> opTypesAlreadyAdded = getIdsOfAddedOperationTypes();
+
+            for(String typeId : OperationType.INSTANCE_REGISTRY.keySet()) {
+                if(!opTypesAlreadyAdded.contains(typeId)) {
+                    for (LocationAPI loc : Global.getSector().getAllLocations()) {
+                        for (PlanetAPI planet : loc.getPlanets()) {
+                            if (!planet.isStar()) {
+                                Util.maybeAddOpToPlanet(planet, typeId);
+                            }
+                        }
+                    }
+
+                    opTypesAlreadyAdded.add(typeId);
+                }
+            }
+
+            saveIdsOfAddedOperationTypes(opTypesAlreadyAdded);
         }
 
-//        for (LocationAPI loc : Global.getSector().getAllLocations()) {
-//            for (PlanetAPI planet : loc.getPlanets()) {
-//                if (!planet.isStar()) {
-//                    Util.maybeAddOpToPlanet(planet, "sun_ns_metals_recycle");
-//                    Util.maybeAddOpToPlanet(planet, "sun_ns_organics_recycle");
-//                }
-//            }
-//        }
+        updatedToNewVersion = false;
     }
     public static boolean isUpdateDiagnosticCheckNeeded() {
+        version = (String)Global.getSector().getPersistentData().get(VERSION_KEY);
+
         if(version == null || version.equals("")) return true;
 
         Version lastSavedVersion = new Version(version);
         Version currentVersion = new Version(Global.getSettings().getModManager().getModSpec(ID).getVersion());
 
         return lastSavedVersion.isOlderThan(currentVersion, true);
+    }
+    public static Set<String> getIdsOfAddedOperationTypes() {
+        Map<String, Object> data = Global.getSector().getPersistentData();
+        Set<String> retVal = data.containsKey(ADDED_OPERATIONS_KEY)
+                ? (Set<String>) data.get(ADDED_OPERATIONS_KEY)
+                : new HashSet<String>();
+
+        // Figure out which ops were added if the game was last saved with a version that didn't record added ops
+        if(retVal.isEmpty() && OperationIntel.isExtant()) {
+            for(OperationIntel op : OperationIntel.getAll()) {
+                retVal.add(op.getType().getId());
+            }
+        }
+
+        return retVal;
+    }
+    public static void saveIdsOfAddedOperationTypes(Set<String> ids) {
+        Map<String, Object> data = Global.getSector().getPersistentData();
+        data.put(ADDED_OPERATIONS_KEY, ids);
     }
 
     private CampaignScript script;
@@ -344,19 +381,37 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void onGameLoad(boolean newGame) {
         try {
+            updatedToNewVersion = false;
+            removeScripts();
+            OperationIntel.loadInstanceRegistry();
+
             // This must be done before reading settings to ensure that things trigger in onSettingsSuccessfullyRead
             if(isUpdateDiagnosticCheckNeeded()) {
                 String oldVersion = version;
+                Logger log = Global.getLogger(ModPlugin.class);
+
                 version = Global.getSettings().getModManager().getModSpec(ID).getVersion();
 
-                Global.getLogger(ModPlugin.class).info("Nomadic Survival version updated from " + oldVersion + " to "
-                        + version + System.lineSeparator() + "Performing update diagnostics...");
+                log.info("Nomadic Survival version updated from " + oldVersion + " to " + version);
+                log.info("Performing update diagnostics...");
 
-                isOperationRefreshNeeded = true;
+                Global.getSector().getPersistentData().put(VERSION_KEY, version);
+
+                // Remove old version of SearchIntel
+                {
+                    IntelManagerAPI im = Global.getSector().getIntelManager();
+                    SearchIntel badSearchIntel = (SearchIntel) im.getFirstIntel(SearchIntel.class);
+
+                    if (badSearchIntel != null) {
+                        log.info("Removing old version of SearchIntel.");
+                        im.removeIntel(badSearchIntel);
+                        im.addIntel(new SearchIntelV2(), true);
+                    }
+                }
+
+                log.info("Update diagnostics complete.");
+                updatedToNewVersion = true;
             }
-
-            removeScripts();
-            OperationIntel.loadInstanceRegistry();
             readSettingsIfNecessary(true);
             addScripts();
 

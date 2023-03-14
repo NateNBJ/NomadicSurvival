@@ -221,7 +221,9 @@ public class OperationIntel extends BaseIntelPlugin {
         return (int)retVal;
     }
     public float getProfitability(boolean withAbundance) {
-        if(getType().isRecycleOp()) {
+        if(getType().isRefitOp()) {
+            return 1;
+        } else if(getType().isRecycleOp()) {
             float divisor = (float)getCostMultiplier(withAbundance);
 
             return divisor <= 0 ? Float.POSITIVE_INFINITY : 1f / divisor - 1;
@@ -424,8 +426,8 @@ public class OperationIntel extends BaseIntelPlugin {
 
             if(markAsNew) setNew(true);
 
-            if (!mgr.hasIntelOfClass(SearchIntel.class)) {
-                SearchIntel search = new SearchIntel();
+            if (!mgr.hasIntelOfClass(SearchIntelV2.class)) {
+                SearchIntelV2 search = new SearchIntelV2();
                 search.setNew(false);
                 mgr.addIntel(search, true);
             }
@@ -517,7 +519,10 @@ public class OperationIntel extends BaseIntelPlugin {
         Color hlGray = Misc.getGrayColor();
         String outputName = getType().getOutput().getLowerCaseName();
 
-        if(getType().isRecycleOp()) {
+        if(getType().isRefitOp()) {
+            info.addPara("An abandoned shipyard on this planet allows you to freely refit your ships and install " +
+                    "hull modifications that would normally require a spaceport.", 10);
+        } else if(getType().isRecycleOp()) {
             info.addPara(Misc.ucFirst(outputName) + " may be reclaimed worth up to %s of the recycled resources.", 10,
                     hl, (int)(getProfitability(true) * 100 + 100) + "%");
             info.addPara("Resources that may be recycled:", 10);
@@ -652,10 +657,12 @@ public class OperationIntel extends BaseIntelPlugin {
                 info.addPara(planet.getName() + ", " + planet.getTypeNameWithWorldLowerCase(), planet.getSpec().getIconColor(), pad);
             }
 
-            float profit = getProfitability(true) * 100;
-            String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : ((int) profit) + "%";
-            if (profit < 0) clr = Misc.getNegativeHighlightColor();
-            info.addPara("Profitability: %s", pad, tc, clr, profitStr);
+            if(!getType().isRefitOp()) {
+                float profit = getProfitability(true) * 100;
+                String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : ((int) profit) + "%";
+                if (profit < 0) clr = Misc.getNegativeHighlightColor();
+                info.addPara("Profitability: %s", pad, tc, clr, profitStr);
+            }
         }
 
         if(showLocalInfo) {
@@ -721,16 +728,16 @@ public class OperationIntel extends BaseIntelPlugin {
     @Override
     public Set<String> getIntelTags(SectorMapAPI map) {
         Set<String> tags = super.getIntelTags(map);
-        SearchIntel search = SearchIntel.getInstance();
+        SearchIntelV2 search = SearchIntelV2.getInstance();
 
-        if(isImportant()) {
+        if(isImportant() || search == null) {
             tags.add(TAG);
         } else if((!search.isFilterUnavailableSet() || isCurrentlyAvailable())
                 && (ModPlugin.SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN || isRequiredSkillKnown())
                 && search.isCommoditySelected(getType())
                 && search.isOpSelected(getType())) {
 
-            if(search.getRangeType() == SearchIntel.RangeType.UnlimitedRange) {
+            if(search.getRangeType() == SearchIntelV2.RangeType.UnlimitedRange) {
                 tags.add(TAG);
             } else {
                 float dist = getLYFromPlayer();
@@ -750,7 +757,9 @@ public class OperationIntel extends BaseIntelPlugin {
     @Override
     public String getSortString() {
         String retVal = getSmallDescriptionTitle();
-        SearchIntel search = (SearchIntel) Global.getSector().getIntelManager().getFirstIntel(SearchIntel.class);
+        SearchIntelV2 search = SearchIntelV2.getInstance();
+
+        if(search == null) return "";
 
         switch (search.getSortType()) {
             case DistFromFleet: {

@@ -6,8 +6,10 @@ import com.fs.starfarer.api.campaign.InteractionDialogAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
+import com.fs.starfarer.api.campaign.econ.Industry;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
+import com.fs.starfarer.api.impl.campaign.ids.Industries;
 import com.fs.starfarer.api.impl.campaign.ids.MemFlags;
 import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
 import com.fs.starfarer.api.util.Misc;
@@ -21,13 +23,54 @@ import java.util.Random;
 import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
 public class Util {
-    public static List<OperationIntel> maybeAddOpToPlanet(PlanetAPI planet, String opID) {
+    static PlanetAPI spaceportRemovalNeededForPlanet = null;
+    static Float actualCrLossMultForRefitSetting = null;
+
+    public static void setToFreeRefitState() {
+        setToFreeRefitState(getInteractionPlanet());
+    }
+    public static void setToFreeRefitState(PlanetAPI planet) {
+        revertToNormalState();
+
+        MarketAPI marketOrNull = planet == null ? null : planet.getMarket();
+
+        if(marketOrNull != null && marketOrNull.isPlanetConditionMarketOnly()) {
+            actualCrLossMultForRefitSetting = Global.getSettings().getFloat("crLossMultForRefit");
+            Global.getSettings().setFloat("crLossMultForRefit", 0f);
+
+            boolean alreadyHasSpaceport = false;
+
+            for (Industry ind : marketOrNull.getIndustries()) {
+                if (ind.getSpec().hasTag(Industries.TAG_SPACEPORT)) {
+                    alreadyHasSpaceport = true;
+                    break;
+                }
+            }
+
+            if (!alreadyHasSpaceport) {
+                spaceportRemovalNeededForPlanet = planet;
+                marketOrNull.addIndustry(Industries.SPACEPORT);
+            }
+        }
+    }
+    public static void revertToNormalState() {
+        if(actualCrLossMultForRefitSetting != null) {
+            Global.getSettings().setFloat("crLossMultForRefit", actualCrLossMultForRefitSetting);
+            actualCrLossMultForRefitSetting = null;
+        }
+
+        if(spaceportRemovalNeededForPlanet != null) {
+            spaceportRemovalNeededForPlanet.getMarket().removeIndustry(Industries.SPACEPORT, null, false);
+            spaceportRemovalNeededForPlanet = null;
+        }
+    }
+    public static void maybeAddOpToPlanet(PlanetAPI planet, String opID) {
         List<OperationIntel> retVal;
 
         if(planet == null || planet.getMarket() == null) {
             retVal = null;
         } else if(Util.isPlanetClaimedByNPC(planet)) {
-            // Prevent ops from spawning at any planet already surveyed at the start of the game
+            // Prevent ops from spawning at planets owned by NPC factions
             retVal = OperationIntel.getAllForPlanet(planet);
         } else {
             retVal = OperationIntel.getAllForPlanet(planet);
@@ -84,14 +127,11 @@ public class Util {
             }
         }
 
-
         if(retVal != null && planet.getMarket() != null && planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL) {
             for (OperationIntel intel : retVal) {
                 intel.addToIntelManager(false);
             }
         }
-
-        return retVal;
     }
     public static List<OperationIntel> getOperationsAvailableAtPlanet(PlanetAPI planet, boolean addIntel) {
         List<OperationIntel> retVal;
@@ -200,7 +240,12 @@ public class Util {
 
         return claimingFaction != null && !claimingFaction.isPlayerFaction();
     }
+    public static PlanetAPI getInteractionPlanet() {
+        return getInteractionPlanet(Global.getSector().getCampaignUI().getCurrentInteractionDialog());
+    }
     public static PlanetAPI getInteractionPlanet(InteractionDialogAPI dialog) {
+        if(dialog == null) return null;
+
         SectorEntityToken target = dialog.getInteractionTarget();
 
         if(target instanceof CampaignPlanet) {
