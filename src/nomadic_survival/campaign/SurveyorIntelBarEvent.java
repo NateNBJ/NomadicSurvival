@@ -18,8 +18,8 @@ import com.fs.starfarer.api.util.WeightedRandomPicker;
 import nomadic_survival.campaign.intel.OperationIntel;
 
 import java.awt.*;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
     public enum OptionId { INIT, ASK, AGREE, SHOW_INTEL, LEAVE }
@@ -132,9 +132,9 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
                 options.addOption("Thank " + getHimOrHer() + " for the conversation and leave", OptionId.LEAVE);
             } break;
             case ASK: {
-                text.addPara("The " + getManOrWoman() + " dons a warm, mischievous smile. \"I've already told you " +
-                        "too much, to be honest, but I'm nothing if not a diligent prospector. I really would like " +
-                        "to help you, but I'm duty bound to uphold my non-disclosure contract. Just another %s and " +
+                text.addPara("The " + getManOrWoman() + " dons a conspiratorial grin. \"To be honest, I've already " +
+                        "told you too much, but I'm nothing if not a diligent prospector. I really would like " +
+                        "to help you, but I'm duty bound to uphold my non-disclosure contract. Just another %s, and " +
                         "I'll have enough credits to retire. Then I won't have to worry about such things, will I?\"",
                         h, Misc.getDGSCredits(cost));
 

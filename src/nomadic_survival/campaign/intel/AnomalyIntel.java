@@ -385,7 +385,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
                         info.addPara("The anomalous disturbance caused by the Galatia Academy's experimentation on " +
                                 "the Domain gate network has now propagated throughout the entire sector. " +
                                 "Fortunately, the interference can be prevented easily. Information about the " +
-                                "anomaly is in high demand, however, so it may be worthwhile to the suffer its " +
+                                "anomaly is in high demand, however, so it may be worthwhile to suffer its " +
                                 "effects for the sake of observation.", 10);
                         marketResetExcuse = "For unknown reasons";
                     } else {
