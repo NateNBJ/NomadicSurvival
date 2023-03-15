@@ -584,6 +584,12 @@ public class AnomalyIntel extends BaseIntelPlugin {
     protected void advanceImpl(float amount) {
         boolean enabled = ModPlugin.isDoneReadingSettings() && ModPlugin.ENABLE_ANOMALY;
 
+        // Handle player fleet changing on respawn
+        if(pf != Global.getSector().getPlayerFleet()) {
+            pf = Global.getSector().getPlayerFleet();
+            resetStage();
+        }
+
         if(convertingExcessFuel && enabled && !Global.getSector().isPaused()) {
             CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
             float diff = cargo.getFuel() - cargo.getMaxFuel();
