@@ -116,7 +116,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     recalculateBatchLimit();
                     prevSelectedBatches = selectedBatches;
 
-                    if (!intel.isDepleted()) {
+                    if (!(intel.getType().isAbundanceRequired() && intel.isNonRenewableAbundanceDepleted())) {
                         if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown()) {
                             float min = playerFleet.getFleetData().getMinCrew();
                             float curr = playerFleet.getCargo().getCrew();
@@ -297,13 +297,13 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 options.setShortcut(OptionId.LEAVE, Keyboard.KEY_ESCAPE, false, false, false, true);
             } break;
             case BACK: {
-                if(intel.isDepleted() && intel.getExcessStored() <= 0) intel.unregister();
+                if(intel.isCompletelyDepleted()) intel.unregister();
 
                 dialog.setPlugin(formerPlugin);
                 new SUN_NS_ConsiderPlanetaryOperations().execute(null, dialog, null, null);
             } break;
             case LEAVE: {
-                if(intel.isDepleted() && intel.getExcessStored() <= 0) intel.unregister();
+                if(intel.isCompletelyDepleted()) intel.unregister();
 
                 dialog.setPlugin(formerPlugin);
                 formerPlugin.init(dialog);

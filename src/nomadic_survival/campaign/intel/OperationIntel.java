@@ -165,13 +165,7 @@ public class OperationIntel extends BaseIntelPlugin {
         return Util.isPlanetClaimedByNPC(planet);
     }
     public boolean isCurrentlyAvailable() {
-        return !isDepleted() || getExcessStored() > 0;
-
-//        boolean isNotColonized = !isPlanetColonized(),
-//                isNotDepleted = !isDepleted(),
-//                isNotClaimed = !(getType().isAbundanceRequired() && isPlanetClaimedByNPC());
-//
-//        return  isNotColonized && isNotDepleted && isNotClaimed;
+        return !isCompletelyDepleted() || getExcessStored() > 0;
     }
     public boolean isSkillRequired() {
         return isSkillRequired && ModPlugin.ENABLE_SKILL_REQUIREMENTS;
@@ -225,7 +219,7 @@ public class OperationIntel extends BaseIntelPlugin {
 
             return divisor <= 0 ? Float.POSITIVE_INFINITY : 1f / divisor - 1;
         } else {
-            int inVal = getInputValuePerBatch(withAbundance && !isDepleted());
+            int inVal = getInputValuePerBatch(withAbundance && !isNonRenewableAbundanceDepleted());
 
             return inVal <= 0 ? Float.POSITIVE_INFINITY : getType().getOutputValuePerBatch() / (float) inVal - 1;
         }
@@ -268,11 +262,13 @@ public class OperationIntel extends BaseIntelPlugin {
     }
     public boolean isHazardRelevant() {
         return (int)((planet.getMarket().getHazardValue() - 1) * 100 * getType().getHazardScale()) != 0
-                && !isDepleted();
+                && !isCompletelyDepleted();
     }
-    public boolean isDepleted() {
-        return getType().isAbundanceRequired()
-                && (abundanceCapacityFraction <= 0 || (abundanceAtLastVisit <= 0 && getAbundancePerMonth() <= 0));
+    public boolean isNonRenewableAbundanceDepleted() {
+        return abundanceCapacityFraction <= 0 || (abundanceAtLastVisit <= 0 && getAbundancePerMonth() <= 0);
+    }
+    public boolean isCompletelyDepleted() {
+        return getType().isAbundanceRequired() && isNonRenewableAbundanceDepleted() && getExcessStored() <= 0;
     }
     public boolean isNotYetVisited() {
         return timestampOfLastVisit == Long.MIN_VALUE;
@@ -377,7 +373,7 @@ public class OperationIntel extends BaseIntelPlugin {
         } else {
             String para;
 
-            if(isDepleted()) {
+            if(isCompletelyDepleted()) {
                 para = "It is no longer possible to acquire " + getType().getOutput().getLowerCaseName() + " here"
                         + (getExcessStored() > 0 ? ", other than what was previously left behind." : ".");
             } else {
@@ -438,7 +434,7 @@ public class OperationIntel extends BaseIntelPlugin {
                 mgr.addIntel(search, true);
             }
 
-            if(mgr.getIntelCount(OperationIntel.class, true) == 25) {
+            if(mgr.getIntelCount(OperationIntel.class, true) == 32) {
                 CampaignScript.notifyAboutSearchIntel();
             }
         }
@@ -690,8 +686,11 @@ public class OperationIntel extends BaseIntelPlugin {
         info.addImages(width, 80, opad, opad * 2f, getType().getOutput().getIconName());
 
         if(isPlanetSurveyed()) {
-            String desc = "While exploring " + planet.getName() + " your survey team discovered "
-                    + getType().getPlaceDesc().toLowerCase() + ".";
+            String desc = Util.isPlanetClaimedByNPC(planet)
+                ? planet.getName() + " is the location of "
+                : "While exploring " + planet.getName() + " your survey team discovered ";
+
+            desc += getType().getPlaceDesc().toLowerCase() + ".";
 
             info.addPara(desc, 10, Misc.getTextColor(), Misc.getHighlightColor(), getType().getOutput().getLowerCaseName());
 

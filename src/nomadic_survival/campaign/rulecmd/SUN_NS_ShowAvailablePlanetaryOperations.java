@@ -49,11 +49,9 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
         }
 
         if(!isPlanetOpsAlreadyListed()) {
-            boolean planetIsColonized = planet != null && planet.getMarket() != null && planet.getMarket().isInEconomy();
-
             if (planet == null) {
                 return false;
-            } else if (planetIsColonized) {
+            } else if (Util.isPlanetClaimedByNPC(planet)) {
                 text.addPara("The following planetary operations are possible on " + planet.getName() + ":");
             } else {
                 text.addPara("While exploring " + planet.getName() + ", your survey team discovered the following " +
