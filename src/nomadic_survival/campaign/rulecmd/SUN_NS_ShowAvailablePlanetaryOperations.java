@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
+    public static final String OPTION_ID = "sun_ns_marketConsiderOps";
+
     static boolean isPlanetOpsAlreadyListed = false;
 
     public static boolean isPlanetOpsAlreadyListed() {
@@ -26,10 +28,27 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
 
     @Override
     public boolean execute(String ruleId, InteractionDialogAPI dialog, List<Misc.Token> params, Map<String, MemoryAPI> memoryMap) {
+        if (dialog == null) return false;
+
+        TextPanelAPI text = dialog.getTextPanel();
+        PlanetAPI planet = Util.getInteractionPlanet(dialog);
+        List<OperationIntel> operations = Util.getOperationsAvailableAtPlanet(planet, true);
+        boolean hasFirstTimeData = false, hasFirstTimeSP = false;
+
+        for(OperationIntel op : operations) {
+            if(op.isNotYetVisited()) {
+                if(op.getType().getFirstVisitData() > 0) hasFirstTimeData = true;
+                if(op.getType().getOccurrenceLimit() == 1) hasFirstTimeSP = true;
+            }
+        }
+
+        if(hasFirstTimeSP) {
+            dialog.setOptionColor(OPTION_ID, Misc.getStoryOptionColor());
+        } else if(hasFirstTimeData) {
+            dialog.setOptionColor(OPTION_ID, Util.getAnomalyDataColor());
+        }
+
         if(!isPlanetOpsAlreadyListed()) {
-            TextPanelAPI text = dialog.getTextPanel();
-            PlanetAPI planet = Util.getInteractionPlanet(dialog);
-            List<OperationIntel> operations = Util.getOperationsAvailableAtPlanet(planet, true);
             boolean planetIsColonized = planet != null && planet.getMarket() != null && planet.getMarket().isInEconomy();
 
             if (planet == null) {
@@ -70,6 +89,6 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
 
     @Override
     public boolean doesCommandAddOptions() {
-        return true;
+        return false;
     }
 }

@@ -30,6 +30,20 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
             // Refit operations are displayed elsewhere, but we need to skip past its index
             if(!op.getType().isRefitOp()) {
                 options.addOption(op.getType().getName(), optionID);
+
+                if(op.isFirstTimeVisitRewardAvailable()) {
+                    if (op.getType().getOccurrenceLimit() == 1) {
+                        dialog.setOptionColor(optionID, Misc.getStoryOptionColor());
+                    } else if (op.getType().getFirstVisitData() > 0) {
+                        dialog.setOptionColor(optionID, Util.getAnomalyDataColor());
+                    }
+                } else if(!op.isRequiredSkillKnown()) {
+                    String hlStr = op.getRequiredSkill().getName().toLowerCase();
+
+                    options.setEnabled(optionID, false);
+                    options.setTooltip(optionID, "Proficiency in " + hlStr + " is required to perform this operation.");
+                    options.setTooltipHighlights(optionID, hlStr);
+                }
             }
         }
 

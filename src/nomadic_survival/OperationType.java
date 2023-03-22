@@ -16,6 +16,7 @@ public class OperationType {
         int baseCount;
         float baseCountPerBatch;
 
+        public boolean isValid() { return getCommodity() != null; }
         public String getCommodityID() {
             return commodityID;
         }
@@ -50,14 +51,7 @@ public class OperationType {
         else return INSTANCE_REGISTRY.get(id);
     }
     public static List<OperationType> getAllForConditionOrGroup(ConditionGenDataSpec mcSpec) {
-        String id = OperationType.NO_CONDITION_REQUIRED;
-
-        if(mcSpec != null) {
-            boolean isValidGroup = mcSpec.getGroup() != null
-                    && ConditionAdjustments.INSTANCE_REGISTRY.containsKey(mcSpec.getId());
-
-            id = isValidGroup ? mcSpec.getGroup() : mcSpec.getId();
-        }
+        String id = Util.getConditionIdOrGroupId(mcSpec);
 
         if(!REGISTRY_BY_CONDITION_GROUP.containsKey(id)) {
             REGISTRY_BY_CONDITION_GROUP.put(id, new ArrayList<OperationType>());
@@ -70,13 +64,15 @@ public class OperationType {
     private Set<String> tags = new HashSet<>();
     private String id, name, requiredConditionGroup, outputID, skillReqID, skillReqExcuse,
             shortName, placeDesc, introProse, placeName, batchName, batchDoName, despoilName, despoilDesc, batchesName,
-            stillAvailableProse;
+            stillAvailableProse, blacklistedConditionID = null;
     private float occurrenceWeight, hazardScale, abundanceCostMult, skillReqChance,
             hazardReduction, despoilYieldMult;
     private int maxAbundance, maxAbundancePerMonth, occurrenceLimit, firstVisitData, outputCount;
     private boolean abundanceRequired, despoilPreventsRegen, despoilRequiresSkill;
     private List<Input> inputs = new ArrayList<>();
-    private Set<String> planetTypesWhereAvailable = new HashSet<>();
+    private Set<String>
+            planetTypesWhereAvailable = new HashSet<>(),
+            planetTypesBlacklist = new HashSet<>();
 
     public String getId() {
         return id;
@@ -197,7 +193,7 @@ public class OperationType {
         return Global.getSector().getEconomy().getCommoditySpec(outputID);
     }
     public int getOutputValuePerBatch() {
-        return getOutputCountPerBatch() * (int)getOutput().getBasePrice();
+        return getOutput() == null ? 1 : getOutputCountPerBatch() * (int)getOutput().getBasePrice();
     }
     public boolean isAnySurvivalCommodityUsedAsInput() {
         Set<String> survivalCommodities = new HashSet<>(Arrays.asList("supplies", "fuel", "crew", "marines", "heavy_machinery"));
@@ -209,8 +205,23 @@ public class OperationType {
         return false;
     }
 
-    public boolean isPossibleOnPlanetType(PlanetAPI planet) {
-        return planetTypesWhereAvailable.isEmpty() || planetTypesWhereAvailable.contains(planet.getTypeId());
+    public boolean isPossibleOnPlanet(PlanetAPI planet) {
+        boolean isAvailableAtType = planetTypesWhereAvailable.isEmpty() || planetTypesWhereAvailable.contains(planet.getTypeId());
+        boolean typeNotBlacklisted = planetTypesBlacklist.isEmpty() || !planetTypesBlacklist.contains(planet.getTypeId());
+        boolean noBlacklistedConditions = true;
+
+        if(blacklistedConditionID != null && planet.getMarket() != null) {
+            for (MarketConditionAPI mc : planet.getMarket().getConditions()) {
+                String id = Util.getConditionIdOrGroupId(mc.getGenSpec());
+
+                if(id.equalsIgnoreCase(blacklistedConditionID)) {
+                    noBlacklistedConditions = false;
+                    break;
+                }
+            }
+        }
+
+        return isAvailableAtType && typeNotBlacklisted && noBlacklistedConditions;
     }
     public boolean isAbundancePotentiallyRelevant() {
         return maxAbundance > 0;
@@ -230,6 +241,8 @@ public class OperationType {
 
     public OperationType(JSONObject data) throws JSONException {
         id = data.getString("id");
+
+        if(id.isEmpty()) return;
 
         // Basic prose
         name = data.getString("name");
@@ -283,7 +296,11 @@ public class OperationType {
 
             if (!reqs.isEmpty()) {
                 for (String planetType : reqs.split(",")) {
-                    planetTypesWhereAvailable.add(planetType.trim());
+                    if(planetType.trim().startsWith("!")) {
+                        planetTypesBlacklist.add(planetType.trim().replace("!", ""));
+                    } else {
+                        planetTypesWhereAvailable.add(planetType.trim());
+                    }
                 }
             }
         }
@@ -313,7 +330,8 @@ public class OperationType {
                 float inputScale = 0;
 
                 for (Input input : getInputs()) {
-                    inputScale += input.getBaseCount() * input.getCommodity().getBasePrice();
+                    float basePrice = input.isValid() ? input.getCommodity().getBasePrice() : 1;
+                    inputScale += input.getBaseCount() * basePrice;
                 }
 
                 inputScale = getOutputValuePerBatch() / inputScale;
@@ -324,19 +342,35 @@ public class OperationType {
             }
         }
 
-        if(getOutput() == null) throw new RuntimeException("No commodity exists with the ID: " + getOutputID());
+        String invalidCommodityIds = "";
 
-        if(requiredConditionGroup.isEmpty()) {
+        if(getOutput() == null) invalidCommodityIds += getOutputID();
+
+        for(Input in : getInputs()) {
+            if(!in.isValid()) {
+                invalidCommodityIds += (invalidCommodityIds.isEmpty() ? "" : ", ") + in.getCommodityID();
+            }
+        }
+
+        if (requiredConditionGroup.isEmpty()) {
+            requiredConditionGroup = NO_CONDITION_REQUIRED;
+        } else if (requiredConditionGroup.startsWith("!")) {
+            blacklistedConditionID = requiredConditionGroup.replace("!", "");
             requiredConditionGroup = NO_CONDITION_REQUIRED;
         }
 
-        if(!REGISTRY_BY_CONDITION_GROUP.containsKey(requiredConditionGroup)) {
-            REGISTRY_BY_CONDITION_GROUP.put(requiredConditionGroup, new ArrayList<OperationType>());
+        if(!invalidCommodityIds.isEmpty()) {
+            Global.getLogger(OperationType.class).warn("Operation type with ID " + id + " will be omitted because it " +
+                    "references unknown commodity IDs: " + invalidCommodityIds);
+        } else {
+            if (!REGISTRY_BY_CONDITION_GROUP.containsKey(requiredConditionGroup)) {
+                REGISTRY_BY_CONDITION_GROUP.put(requiredConditionGroup, new ArrayList<OperationType>());
+            }
+
+            REGISTRY_BY_CONDITION_GROUP.get(requiredConditionGroup).add(this);
+            INSTANCE_REGISTRY.put(id, this);
+
+            Global.getSector().getPersistentData().put(OCCURRENCE_COUNT_ID_PREFIX + getId(), 0);
         }
-
-        REGISTRY_BY_CONDITION_GROUP.get(requiredConditionGroup).add(this);
-        INSTANCE_REGISTRY.put(id, this);
-
-        Global.getSector().getPersistentData().put(OCCURRENCE_COUNT_ID_PREFIX + getId(), 0);
     }
 }

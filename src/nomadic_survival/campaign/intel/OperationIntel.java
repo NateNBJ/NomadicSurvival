@@ -18,10 +18,7 @@ import com.fs.starfarer.api.ui.SectorMapAPI;
 import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 import com.thoughtworks.xstream.XStream;
-import nomadic_survival.ConditionAdjustments;
-import nomadic_survival.ModPlugin;
-import nomadic_survival.OperationType;
-import nomadic_survival.Util;
+import nomadic_survival.*;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
@@ -264,7 +261,7 @@ public class OperationIntel extends BaseIntelPlugin {
         return planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL;
     }
     public boolean isAbundanceRelevant() {
-        return abundanceCapacityFraction > 0 && (abundanceAtLastVisit > 0 || abundancePerMonthFraction > 0);
+        return abundanceCapacityFraction > 0 && (abundanceAtLastVisit > 0 || getAbundancePerMonth() > 0);
     }
     public boolean isAbundanceAvailable() {
         return getCurrentAbundanceBatches() > 0;
@@ -275,7 +272,13 @@ public class OperationIntel extends BaseIntelPlugin {
     }
     public boolean isDepleted() {
         return getType().isAbundanceRequired()
-                && (abundanceCapacityFraction <= 0 || (abundanceAtLastVisit <= 0 && abundancePerMonthFraction <= 0));
+                && (abundanceCapacityFraction <= 0 || (abundanceAtLastVisit <= 0 && getAbundancePerMonth() <= 0));
+    }
+    public boolean isNotYetVisited() {
+        return timestampOfLastVisit == Long.MIN_VALUE;
+    }
+    public boolean isFirstTimeVisitRewardAvailable() {
+        return isNotYetVisited() && (getType().getOccurrenceLimit() == 1 || getType().getFirstVisitData() > 0);
     }
     public int getDespoilYield() {
         return (int)(getType().getDespoilYieldMult() * getCurrentAbundance());
@@ -356,13 +359,16 @@ public class OperationIntel extends BaseIntelPlugin {
 
         abundanceAtLastVisit = getCurrentAbundance();
 
-        if(timestampOfLastVisit == Long.MIN_VALUE) {
+        if(isNotYetVisited()) {
             text.addPara(getType().getIntroProse());
 
             if(getType().getFirstVisitData() > 0) {
                 CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                CommoditySpecAPI dataSpec = Global.getSector().getEconomy().getCommoditySpec(ModPlugin.DATA_COMMODITY_ID);
                 cargo.addCommodity(ModPlugin.DATA_COMMODITY_ID, getType().getFirstVisitData());
                 AddRemoveCommodity.addCommodityGainText(ModPlugin.DATA_COMMODITY_ID, getType().getFirstVisitData(), text);
+
+                Global.getSoundPlayer().playUISound(dataSpec.getSoundIdDrop(), 1, 1);
             }
 
             if(getType().getOccurrenceLimit() == 1) {
@@ -430,6 +436,10 @@ public class OperationIntel extends BaseIntelPlugin {
                 SearchIntelV2 search = new SearchIntelV2();
                 search.setNew(false);
                 mgr.addIntel(search, true);
+            }
+
+            if(mgr.getIntelCount(OperationIntel.class, true) == 25) {
+                CampaignScript.notifyAboutSearchIntel();
             }
         }
     }
@@ -737,14 +747,7 @@ public class OperationIntel extends BaseIntelPlugin {
                 && search.isCommoditySelected(getType())
                 && search.isOpSelected(getType())) {
 
-            if(search.getRangeType() == SearchIntelV2.RangeType.UnlimitedRange) {
-                tags.add(TAG);
-            } else {
-                float dist = getLYFromPlayer();
-                float maxDist = search.getRangeType().getMaxLY();
-
-                if(dist < maxDist) tags.add(TAG);
-            }
+            tags.add(TAG);
         }
 
         if(!isPlanetSurveyed()) {

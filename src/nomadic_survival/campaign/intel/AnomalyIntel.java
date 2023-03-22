@@ -82,8 +82,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
             } else if(fm.getVariant().hasHullMod(HullMods.CIVGRADE)) {
                 return fm.getVariant().hasHullMod(HullMods.MILITARIZED_SUBSYSTEMS) ? Militarized : Vulnerable;
             } else {
-                return fm.getHullSpec().isCivilianNonCarrier() || travelRange > MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS
-                        ? Militarized : Protected;
+                return travelRange > MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS ? Militarized : Protected;
             }
         }
 
@@ -120,7 +119,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     Stage stage = Stage.Unknown, highestStage = Stage.Unknown;
     TabID selectedTab = TabID.Report;
-    boolean disallowed = false, convertingExcessFuel = false;
+    boolean disallowed = false, convertingExcessFuel = false, toggleHasBeenExplained = false;
     float lyTraveled = 0, dataProgress = 0, fuelLastFrame = 0, dataEarnedFromTravelThisTrip = 0;
     Vector2f locLastFrame = new Vector2f();
     CampaignFleetAPI pf;
@@ -310,7 +309,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 bc = getFactionForUIColors().getBaseUIColor(),
                 hl = Misc.getHighlightColor(),
                 hlNeg = Misc.getNegativeHighlightColor(),
-                hlData = Misc.getBasePlayerColor();
+                hlData = Util.getAnomalyDataColor();
         VulnerabilityLevel fuelVuln = getFuelVulnerability();
         Map<VulnerabilityLevel, Float> tanks = getTankCapacityPerVulnerabilityLevel();
         int fuel = (int)pf.getCargo().getFuel();
@@ -605,7 +604,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 if(wholeData >= 1) {
                     Global.getSector().getCampaignUI().addMessage("%s units of excess fuel converted into %s data",
                             Misc.getTextColor(), (int)diff + "", wholeData + "", Misc.getHighlightColor(),
-                            Misc.getBasePlayerColor());
+                            Util.getAnomalyDataColor());
                 }
             }
         }
@@ -795,6 +794,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         if(buttonId instanceof ButtonID) {
             switch ((ButtonID) buttonId) {
                 case Toggle: {
+                    toggleHasBeenExplained = true;
                     disallowed = !disallowed;
                     resetStage();
                 }
@@ -845,11 +845,15 @@ public class AnomalyIntel extends BaseIntelPlugin {
     public void createConfirmationPrompt(Object buttonId, TooltipMakerAPI prompt) {
         FactionAPI faction = getFactionForUIColors();
 
-        if (buttonId == ButtonID.ConvertFuel) {
+        if(buttonId == ButtonID.Toggle) {
+            prompt.addPara("Thankfully, it is possible to counteract the effects of the drive field anomaly at any " +
+                    "time. Doing so will prevent your fleet from consuming more fuel than normal, but will also " +
+                    " prevent you from earning data by studying the anomaly.", 0f, Misc.getTextColor(), faction.getBaseUIColor());
+        } else if (buttonId == ButtonID.ConvertFuel) {
             convertCheckbox.setChecked(convertingExcessFuel);
             prompt.addPara("It is possible to deliberately trigger the annihilation of fuel in order to collect data " +
-                    "of equal value. Do you want to automatically convert fuel that exceeds your storage " +
-                    "capacity into data?", 0f, Misc.getTextColor(), faction.getBaseUIColor());
+                    "of equal value. Do you want to automatically convert fuel into data when it exceeds your " +
+                    "fleet's total fuel storage capacity?", 0f, Misc.getTextColor(), faction.getBaseUIColor());
         } else {
             super.createConfirmationPrompt(buttonId, prompt);
         }
@@ -857,6 +861,13 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     @Override
     public boolean doesButtonHaveConfirmDialog(Object buttonId) {
-        return buttonId == ButtonID.ConvertFuel && !convertingExcessFuel ? true : super.doesButtonHaveConfirmDialog(buttonId);
+        if(buttonId instanceof ButtonID) {
+            switch ((ButtonID) buttonId) {
+                case ConvertFuel: return !convertingExcessFuel;
+                case Toggle: return !toggleHasBeenExplained;
+            }
+        }
+
+        return super.doesButtonHaveConfirmDialog(buttonId);
     }
 }

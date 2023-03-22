@@ -11,28 +11,14 @@ import nomadic_survival.ModPlugin;
 import nomadic_survival.OperationType;
 import nomadic_survival.Util;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.Display;
 
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.*;
 
 public class SearchIntelV2 extends BaseIntelPlugin {
     enum ButtonID { Apply, AutoApply, FilterUnavailable, FilterType }
     enum SortType { DistFromFleet, DistFromDest, DistFromRoute, BestValue }
-    enum FilterType { SurveyNeeded, SkillNeeded, Claimed, Available }
-    enum RangeType {
-        ShortRange(5), MidRange(10), LongRange(25), UnlimitedRange(Integer.MAX_VALUE);
-
-        int maxLY;
-
-        public String getButtonString() { return maxLY == Integer.MAX_VALUE ? "No Range Limit" : maxLY + " Lightyears"; }
-        public int getMaxLY() {
-            return maxLY;
-        }
-        RangeType(int maxLY) { this.maxLY = maxLY; }
-    }
 
     public static final float CHECK_BUTTON_HEIGHT = 25;
 
@@ -45,22 +31,13 @@ public class SearchIntelV2 extends BaseIntelPlugin {
     transient TooltipMakerAPI info;
     transient Map<CommoditySpecAPI, Set<OperationType>> knownOps = new HashMap<>();
 
-    boolean autoApply = true, filterUnavailable = true, filterByInput = false;
+    boolean filterUnavailable = true, filterByInput = false;
     SortType sortType = SortType.DistFromFleet;
-    RangeType rangeType = RangeType.UnlimitedRange;
     Set<String> selectedCommodities = new HashSet<>();
     Set<String> selectedOps = new HashSet<>();
-//    Set<FilterType> selectedFilters = new HashSet<>();
 
     public SortType getSortType() {
         return sortType;
-    }
-    public RangeType getRangeType() {
-        return rangeType;
-    }
-
-    public void nullifyInfoField() {
-        this.info = null;
     }
     public boolean isCommoditySelected(OperationType type) {
         if(selectedCommodities.isEmpty()) return true;
@@ -77,9 +54,6 @@ public class SearchIntelV2 extends BaseIntelPlugin {
     }
     public boolean isOpSelected(OperationType opType) {
         return selectedOps.isEmpty() || selectedOps.contains(opType.getId());
-    }
-    public boolean isAutoApplySet() {
-        return autoApply;
     }
     public boolean isFilterUnavailableSet() {
         return filterUnavailable;
@@ -115,8 +89,6 @@ public class SearchIntelV2 extends BaseIntelPlugin {
 
         if(key instanceof SortType) {
             selected = sortType == key;
-        } else if(key instanceof RangeType) {
-            selected = rangeType == key;
         } else if(key instanceof String) {
             selected = selectedCommodities.contains(key);
         } else if(key instanceof OperationType) {
@@ -156,8 +128,12 @@ public class SearchIntelV2 extends BaseIntelPlugin {
         Color tc = Misc.getGrayColor();
         float initPad = (mode == ListInfoMode.IN_DESC) ? opad : pad;
 
-        info.addPara("Filter which operations are shown", tc, initPad);
-        info.addPara("The map shows the top 100 icons", tc, pad);
+        if(mode == ListInfoMode.MESSAGES) {
+            info.addPara("Use the \"Planet Ops\" tag to search for planetary operations.", tc, initPad);
+        } else {
+            info.addPara("Filter which operations are shown", tc, initPad);
+            info.addPara("The map shows the top 100 icons", tc, pad);
+        }
     }
 
     @Override
@@ -166,13 +142,15 @@ public class SearchIntelV2 extends BaseIntelPlugin {
         this.info = info;
         this.checkButtonCount = 0;
 
-        if (!isAutoApplySet()) {
-            info.addButton("Apply", ButtonID.Apply, width, CHECK_BUTTON_HEIGHT, 10).setEnabled(!isAutoApplySet());
-        }
+        int sitesLeftToDiscover = OperationIntel.getAllUnknown().size();
 
-        info.addAreaCheckbox("Automatically Apply Parameters", ButtonID.AutoApply, Misc.getBasePlayerColor(),
-                        Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 3, false)
-                .setChecked(autoApply);
+        if(sitesLeftToDiscover > 0) {
+            info.beginGridFlipped(width, 1, 40, 10);
+            info.addToGrid(0, 0, "Operation sites left to discover", "" + sitesLeftToDiscover);
+            info.addGrid(10);
+        } else {
+            info.addPara("All operation sites have been discovered!", 10);
+        }
 
         if (Global.getSettings().isDevMode()) {
             info.addAreaCheckbox("Only Show Available Operations", ButtonID.FilterUnavailable, Misc.getBasePlayerColor(),
@@ -201,14 +179,6 @@ public class SearchIntelV2 extends BaseIntelPlugin {
             addCheckButton("Distance from Route", SortType.DistFromRoute);
 //            info.addTooltipToPrevious(bsTooltip, TooltipMakerAPI.TooltipLocation.LEFT);
             addCheckButton("Profitability", SortType.BestValue);
-        }
-
-        if (ModPlugin.SHOW_FILTER_OPTIONS) {
-            info.addSectionHeading("Filter by Range", Alignment.MID, 15);
-            addCheckButton(RangeType.UnlimitedRange.getButtonString(), RangeType.UnlimitedRange);
-            addCheckButton(RangeType.ShortRange.getButtonString(), RangeType.ShortRange);
-            addCheckButton(RangeType.MidRange.getButtonString(), RangeType.MidRange);
-            addCheckButton(RangeType.LongRange.getButtonString(), RangeType.LongRange);
         }
 
         info.addSectionHeading("Filtering by " + (filterByInput ? "Input" : "Output") + " Commodities", Alignment.MID, 15);
@@ -277,9 +247,6 @@ public class SearchIntelV2 extends BaseIntelPlugin {
                 case Apply: {
                     Global.getSector().getCampaignUI().showCoreUITab(CoreUITabId.INTEL);
                 } break;
-                case AutoApply: {
-                    autoApply = !autoApply;
-                } break;
                 case FilterUnavailable: {
                     filterUnavailable = !filterUnavailable;
                 } break;
@@ -291,8 +258,6 @@ public class SearchIntelV2 extends BaseIntelPlugin {
             }
         } else if(buttonId instanceof SortType) {
             sortType = (SortType) buttonId;
-        } else if(buttonId instanceof RangeType) {
-            rangeType = (RangeType) buttonId;
         } else if(buttonId instanceof String) {
             if(ctrlHeld) {
                 if (selectedCommodities.contains(buttonId)) selectedCommodities.remove(buttonId);
@@ -348,24 +313,7 @@ public class SearchIntelV2 extends BaseIntelPlugin {
             }
         }
 
-        if(isAutoApplySet()) {
-            ui.updateIntelList();
-
-            try {
-                Robot bot = new Robot();
-                Point window = new Point(Display.getX(), Display.getY());
-                Point mouse = MouseInfo.getPointerInfo().getLocation();
-
-                bot.mouseMove(window.x + 50, window.y + 80);
-                bot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                bot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-                bot.mouseMove(mouse.x, mouse.y);
-            } catch (Exception e) {
-                ModPlugin.reportCrash(e);
-            }
-        } else {
-            super.buttonPressConfirmed(buttonId, ui);
-        }
+        ui.recreateIntelUI();
     }
 
     @Override

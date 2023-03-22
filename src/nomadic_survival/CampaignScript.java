@@ -4,13 +4,21 @@ import com.fs.starfarer.api.EveryFrameScript;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.CoreUITabId;
+import com.fs.starfarer.api.campaign.comm.CommMessageAPI;
+import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
+import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
+import nomadic_survival.campaign.intel.SearchIntelV2;
 import nomadic_survival.campaign.rulecmd.SUN_NS_ShowAvailablePlanetaryOperations;
 
 import static nomadic_survival.ModPlugin.reportCrash;
 
 public class CampaignScript implements EveryFrameScript {
-    transient static boolean inFreeRefitState = false, shouldActivateFreeRefitState = false;
+    transient static boolean
+            inFreeRefitState = false,
+            shouldActivateFreeRefitState = false,
+            searchNotificationNeeded = false;
 
+    public static void notifyAboutSearchIntel() { searchNotificationNeeded = true; }
     public static void setShouldActivateFreeRefitState(boolean should) {
         shouldActivateFreeRefitState = should;
     }
@@ -49,8 +57,19 @@ public class CampaignScript implements EveryFrameScript {
                 return;
             }
 
+
+            IntelManagerAPI im =  Global.getSector().getIntelManager();
+
+
             if(!ui.isShowingDialog()) {
                 SUN_NS_ShowAvailablePlanetaryOperations.setPlanetOpsAlreadyListed(false);
+
+                if(searchNotificationNeeded && im.hasIntelOfClass(SearchIntelV2.class)) {
+                    IntelInfoPlugin intel = im.getFirstIntel(SearchIntelV2.class);
+                    Global.getSector().getCampaignUI().addMessage(intel, CommMessageAPI.MessageClickAction.INTEL_TAB, intel);
+                    searchNotificationNeeded = false;
+                }
+
             }
         } catch (Exception e) { reportCrash(e); }
     }
