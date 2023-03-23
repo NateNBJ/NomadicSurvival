@@ -1,10 +1,7 @@
 package nomadic_survival;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.FactionAPI;
-import com.fs.starfarer.api.campaign.InteractionDialogAPI;
-import com.fs.starfarer.api.campaign.PlanetAPI;
-import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.Industry;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
@@ -21,6 +18,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Stack;
 
 import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
@@ -71,47 +69,38 @@ public class Util {
         boolean planetIsClaimed = Util.isPlanetClaimedByNPC(planet);
         Random rand = new Random(planet.getMemoryWithoutUpdate().getLong(MemFlags.SALVAGE_SEED));
         WeightedRandomPicker<OperationType> picker = new WeightedRandomPicker<>(rand);
+        Stack<OperationType> guaranteedPicks = new Stack<>();
+        List<MarketConditionAPI> copyOfMCs = new ArrayList<>(planet.getMarket().getConditions());
+
+        // For the sake of operation types that don't require conditions
+        copyOfMCs.add(null);
 
         // No more operations will be accepted once this is picked
         picker.add(null, planet.getMarket().getHazardValue() * (planetIsClaimed ? 2 : 1));
 
-        for (MarketConditionAPI mc : planet.getMarket().getConditions()) {
-            ConditionGenDataSpec spec = mc.getGenSpec();
+        for (MarketConditionAPI mc : copyOfMCs) {
+            for (OperationType type : OperationType.getAllForCondition(mc)) {
+                if((opTypeId == null || type.getId().equals(opTypeId))
+                        && type.isPossibleOnPlanet(planet)
+                        && (!planetIsClaimed || !type.isAbundanceRequired())
+                        && (!planetIsClaimed || type.getOccurrenceLimit() == Integer.MAX_VALUE)
+                        && (type.getOccurrenceCount() < type.getOccurrenceLimit())) {
 
-            if(spec != null) {
-                for (OperationType type : OperationType.getAllForConditionOrGroup(spec)) {
-                    picker.add(type, type.getOccurrenceWeight(mc));
+                    float weight = type.getOccurrenceWeight(mc);
+
+                    if(weight < 0 || weight >= 999) guaranteedPicks.add(type);
+                    else picker.add(type, weight);
                 }
             }
         }
 
-        for (OperationType type : OperationType.getAllForConditionOrGroup(null)) {
-            picker.add(type, type.getBaseOccurrenceWeight());
-        }
-
-        List<OperationType> typesCopy = new ArrayList<>(picker.getItems());
-        for(OperationType type : typesCopy) {
-            if (type == null) {
-                // Don't remove the flag for "no more ops"
-            } else if((opTypeId != null && !type.getId().equals(opTypeId))
-                    || (planetIsClaimed && type.isAbundanceRequired())
-                    || !type.isPossibleOnPlanet(planet)
-                    || !(type.getOccurrenceCount() < type.getOccurrenceLimit())) {
-
-                picker.remove(type);
-            }
-        }
-
         for (int i = retVal.size(); i < ModPlugin.MAX_OPERATION_TYPES_PER_PLANET && !picker.isEmpty();) {
-            OperationType type = picker.pickAndRemove();
+            OperationType type = guaranteedPicks.isEmpty() ? picker.pickAndRemove() : guaranteedPicks.pop();
 
             if (type != null) {
                 for (OperationIntel other : retVal) {
                     if (other.getType().getName().equals(type.getName())) continue;
                 }
-
-                // Prevent unique ops from spawning at claimed planets
-                if(type.getOccurrenceLimit() < Integer.MAX_VALUE && planetIsClaimed) continue;
 
                 // The new op is added to the return value when it registers itself during creation
                 OperationIntel newOp = new OperationIntel(type, planet, rand);
@@ -200,8 +189,9 @@ public class Util {
     }
     public static boolean isPlanetColonizedByNPC(PlanetAPI planet) {
         MarketAPI market = planet.getMarket();
+        FactionAPI faction = market == null ? null : market.getFaction();
 
-        return market == null ? false : market.getFaction().isShowInIntelTab() && !market.isPlanetConditionMarketOnly();
+        return faction == null ? false : faction.isShowInIntelTab() && !market.isPlanetConditionMarketOnly();
     }
     public static PlanetAPI getInteractionPlanet() {
         return getInteractionPlanet(Global.getSector().getCampaignUI().getCurrentInteractionDialog());
@@ -235,5 +225,19 @@ public class Util {
         }
 
         return id;
+    }
+    public static void refreshKnownOperations() {
+        for (LocationAPI loc : Global.getSector().getAllLocations()) {
+            for (SectorEntityToken token : loc.getAllEntities()) {
+                final MarketAPI market = token.getMarket();
+                final PlanetAPI planet = market == null ? null : market.getPlanetEntity();
+
+                if (market != null && planet != null && market.getSurveyLevel() == MarketAPI.SurveyLevel.FULL) {
+                    for(OperationIntel intel : Util.getOperationsAvailableAtPlanet(planet, true)) {
+                        intel.setNew(false);
+                    }
+                }
+            }
+        }
     }
 }

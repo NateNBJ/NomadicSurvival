@@ -57,9 +57,7 @@ public class CampaignScript implements EveryFrameScript {
                 return;
             }
 
-
             IntelManagerAPI im =  Global.getSector().getIntelManager();
-
 
             if(!ui.isShowingDialog()) {
                 SUN_NS_ShowAvailablePlanetaryOperations.setPlanetOpsAlreadyListed(false);

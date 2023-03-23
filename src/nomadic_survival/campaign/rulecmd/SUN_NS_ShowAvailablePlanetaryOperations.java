@@ -52,7 +52,7 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
             if (planet == null) {
                 return false;
             } else if (Util.isPlanetClaimedByNPC(planet)) {
-                text.addPara("The following planetary operations are possible on " + planet.getName() + ":");
+                text.addPara("Opportunities for planetary operations on " + planet.getName() + ":");
             } else {
                 text.addPara("While exploring " + planet.getName() + ", your survey team discovered the following " +
                         "opportunities for planetary operations:");

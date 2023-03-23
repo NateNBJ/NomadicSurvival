@@ -133,13 +133,13 @@ public class ModPlugin extends BaseModPlugin {
 
             if(settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
             SHOW_SORT_OPTIONS = settingsCfg.getBoolean("showSortOptions");
-
-            onSettingsSuccessfullyRead();
         } catch (Exception e) {
             settingsCfg = null;
 
             return reportCrash(e);
         }
+
+        onSettingsSuccessfullyRead();
 
         settingsCfg = null;
 
@@ -225,9 +225,12 @@ public class ModPlugin extends BaseModPlugin {
             MARK_NEW_OP_INTEL_AS_NEW = temp;
         } else if(updatedToNewVersion) {
             Set<String> opTypesAlreadyAdded = getIdsOfAddedOperationTypes();
+            Logger log = Global.getLogger(ModPlugin.class);
 
             for(String typeId : OperationType.INSTANCE_REGISTRY.keySet()) {
                 if(!opTypesAlreadyAdded.contains(typeId)) {
+                    log.info("Adding new operation type to sector:" + typeId);
+
                     for (LocationAPI loc : Global.getSector().getAllLocations()) {
                         for (PlanetAPI planet : loc.getPlanets()) {
                             if (!planet.isStar()) {
@@ -380,51 +383,48 @@ public class ModPlugin extends BaseModPlugin {
 
     @Override
     public void onGameLoad(boolean newGame) {
-        try {
-            updatedToNewVersion = false;
-            removeScripts();
-            OperationIntel.loadInstanceRegistry();
+        updatedToNewVersion = false;
+        removeScripts();
+        OperationIntel.loadInstanceRegistry();
 
-            // This must be done before reading settings to ensure that things trigger in onSettingsSuccessfullyRead
-            if(isUpdateDiagnosticCheckNeeded()) {
-                String oldVersion = version;
-                Logger log = Global.getLogger(ModPlugin.class);
+        // This must be done before reading settings to ensure that things trigger in onSettingsSuccessfullyRead
+        if(isUpdateDiagnosticCheckNeeded()) {
+            String oldVersion = version;
+            Logger log = Global.getLogger(ModPlugin.class);
 
-                version = Global.getSettings().getModManager().getModSpec(ID).getVersion();
+            version = Global.getSettings().getModManager().getModSpec(ID).getVersion();
 
-                log.info("Nomadic Survival version updated from " + oldVersion + " to " + version);
-                log.info("Performing update diagnostics...");
+            log.info("Nomadic Survival version updated from " + oldVersion + " to " + version);
+            log.info("Performing update diagnostics...");
 
-                Global.getSector().getPersistentData().put(VERSION_KEY, version);
+            Global.getSector().getPersistentData().put(VERSION_KEY, version);
 
-                // Remove old version of SearchIntel
-                {
-                    IntelManagerAPI im = Global.getSector().getIntelManager();
-                    SearchIntel badSearchIntel = (SearchIntel) im.getFirstIntel(SearchIntel.class);
+            // Remove old version of SearchIntel
+            {
+                IntelManagerAPI im = Global.getSector().getIntelManager();
+                SearchIntel badSearchIntel = (SearchIntel) im.getFirstIntel(SearchIntel.class);
 
-                    if (badSearchIntel != null) {
-                        log.info("Removing old version of SearchIntel.");
-                        im.removeIntel(badSearchIntel);
-                        im.addIntel(new SearchIntelV2(), true);
-                    }
+                if (badSearchIntel != null) {
+                    log.info("Removing old version of SearchIntel.");
+                    im.removeIntel(badSearchIntel);
+                    im.addIntel(new SearchIntelV2(), true);
                 }
-
-                log.info("Update diagnostics complete.");
-                updatedToNewVersion = true;
-            }
-            readSettingsIfNecessary(true);
-            addScripts();
-
-            // Ensure info field won't be saved even if it previously was and SearchIntel.createSmallDescription hasn't been called
-            for(IntelInfoPlugin intel : Global.getSector().getIntelManager().getIntel(SearchIntel.class)) {
-                ((SearchIntel)intel).nullifyInfoField();
             }
 
-            if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+            log.info("Update diagnostics complete.");
+            updatedToNewVersion = true;
+        }
+        readSettingsIfNecessary(true);
+        addScripts();
+
+        // Ensure info field won't be saved even if it previously was and SearchIntel.createSmallDescription hasn't been called
+        for(IntelInfoPlugin intel : Global.getSector().getIntelManager().getIntel(SearchIntel.class)) {
+            ((SearchIntel)intel).nullifyInfoField();
+        }
+
+        if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
                 LunaSettingsChangedListener.addToManagerIfNeeded();
             }
-
-        } catch (Exception e) { reportCrash(e); }
     }
 
     @Override

@@ -4,7 +4,6 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
-import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -50,8 +49,12 @@ public class OperationType {
         if(!INSTANCE_REGISTRY.containsKey(id)) throw new IllegalArgumentException("No OperationType exists with the id " + id);
         else return INSTANCE_REGISTRY.get(id);
     }
-    public static List<OperationType> getAllForConditionOrGroup(ConditionGenDataSpec mcSpec) {
-        String id = Util.getConditionIdOrGroupId(mcSpec);
+    public static List<OperationType> getAllForCondition(MarketConditionAPI mc) {
+        String id = NO_CONDITION_REQUIRED;
+
+        if(mc != null) {
+            id = mc.getGenSpec() == null ? mc.getId() : Util.getConditionIdOrGroupId(mc.getGenSpec());
+        }
 
         if(!REGISTRY_BY_CONDITION_GROUP.containsKey(id)) {
             REGISTRY_BY_CONDITION_GROUP.put(id, new ArrayList<OperationType>());
@@ -59,7 +62,6 @@ public class OperationType {
 
         return REGISTRY_BY_CONDITION_GROUP.get(id);
     }
-
 
     private Set<String> tags = new HashSet<>();
     private String id, name, requiredConditionGroup, outputID, skillReqID, skillReqExcuse,
@@ -227,12 +229,12 @@ public class OperationType {
         return maxAbundance > 0;
     }
 
-    public float getOccurrenceWeight(MarketConditionAPI condition) {
+    public float getOccurrenceWeight(MarketConditionAPI mc) {
         float weight = getBaseOccurrenceWeight();
-        String group = condition.getGenSpec().getGroup();
+        String group = mc != null && mc.getGenSpec() != null ? mc.getGenSpec().getGroup() : null;
 
-        if(group.equals(getRequiredConditionGroup())) {
-            ConditionAdjustments mults = ConditionAdjustments.get(condition.getId());
+        if(group != null && group.equals(getRequiredConditionGroup())) {
+            ConditionAdjustments mults = ConditionAdjustments.get(mc.getId());
             weight *= mults.getOccurrenceWeightMult();
         }
 
@@ -257,7 +259,7 @@ public class OperationType {
 
         // Occurence and availability
         requiredConditionGroup = data.optString("required_condition_group", NO_CONDITION_REQUIRED);
-        occurrenceWeight = (float) data.getDouble("occurrence_weight");
+        occurrenceWeight = (float) data.optDouble("occurrence_weight", -1);
         occurrenceLimit = data.optInt("occurrence_limit", Integer.MAX_VALUE);
         skillReqID = data.getString("skill_req_id");
         skillReqExcuse = data.getString("skill_req_excuse");
