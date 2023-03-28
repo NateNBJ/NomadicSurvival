@@ -49,6 +49,9 @@ public class OperationType {
         if(!INSTANCE_REGISTRY.containsKey(id)) throw new IllegalArgumentException("No OperationType exists with the id " + id);
         else return INSTANCE_REGISTRY.get(id);
     }
+    public static Collection<OperationType> getAll() {
+        return INSTANCE_REGISTRY.values();
+    }
     public static List<OperationType> getAllForCondition(MarketConditionAPI mc) {
         String id = NO_CONDITION_REQUIRED;
 
@@ -179,6 +182,16 @@ public class OperationType {
         return outputCount;
     }
     public boolean isRisky() { return tags.contains(Tags.RISKY); }
+    public Set<String> getTags() {
+        return tags;
+    }
+    public Set<String> getPlanetTypesWhereAvailable() {
+        return planetTypesWhereAvailable;
+    }
+    public Set<String> getPlanetTypesBlacklist() {
+        return planetTypesBlacklist;
+    }
+
     public boolean isRecycleOp() { return tags.contains(Tags.RECYCLE); }
     public boolean isRefitOp() { return tags.contains(Tags.REFIT); }
     public boolean isInputTaken(String commodityID) {
@@ -188,9 +201,7 @@ public class OperationType {
 
         return false;
     }
-
     public List<Input> getInputs() { return inputs; }
-
     public CommoditySpecAPI getOutput() {
         return Global.getSector().getEconomy().getCommoditySpec(outputID);
     }
@@ -206,7 +217,6 @@ public class OperationType {
 
         return false;
     }
-
     public boolean isPossibleOnPlanet(PlanetAPI planet) {
         boolean isAvailableAtType = planetTypesWhereAvailable.isEmpty() || planetTypesWhereAvailable.contains(planet.getTypeId());
         boolean typeNotBlacklisted = planetTypesBlacklist.isEmpty() || !planetTypesBlacklist.contains(planet.getTypeId());
@@ -214,9 +224,7 @@ public class OperationType {
 
         if(blacklistedConditionID != null && planet.getMarket() != null) {
             for (MarketConditionAPI mc : planet.getMarket().getConditions()) {
-                String id = Util.getConditionIdOrGroupId(mc.getGenSpec());
-
-                if(id.equalsIgnoreCase(blacklistedConditionID)) {
+                if(Util.isIdMatchedByConditionOrGroup(blacklistedConditionID, mc)) {
                     noBlacklistedConditions = false;
                     break;
                 }
@@ -228,7 +236,6 @@ public class OperationType {
     public boolean isAbundancePotentiallyRelevant() {
         return maxAbundance > 0;
     }
-
     public float getOccurrenceWeight(MarketConditionAPI mc) {
         float weight = getBaseOccurrenceWeight();
         String group = mc != null && mc.getGenSpec() != null ? mc.getGenSpec().getGroup() : null;
@@ -239,6 +246,132 @@ public class OperationType {
         }
 
         return weight;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+    public void setRequiredConditionGroup(String requiredConditionGroup) {
+        this.requiredConditionGroup = requiredConditionGroup;
+    }
+    public void setSkillReqID(String skillReqID) {
+        this.skillReqID = skillReqID;
+    }
+    public void setSkillReqExcuse(String skillReqExcuse) {
+        this.skillReqExcuse = skillReqExcuse;
+    }
+    public void setShortName(String shortName) {
+        this.shortName = shortName;
+    }
+    public void setPlaceDesc(String placeDesc) {
+        this.placeDesc = placeDesc;
+    }
+    public void setIntroProse(String introProse) {
+        this.introProse = introProse;
+    }
+    public void setPlaceName(String placeName) {
+        this.placeName = placeName;
+    }
+    public void setBatchName(String batchName) {
+        this.batchName = batchName;
+    }
+    public void setBatchDoName(String batchDoName) {
+        this.batchDoName = batchDoName;
+    }
+    public void setDespoilName(String despoilName) {
+        this.despoilName = despoilName;
+    }
+    public void setDespoilDesc(String despoilDesc) {
+        this.despoilDesc = despoilDesc;
+    }
+    public void setBatchesName(String batchesName) {
+        this.batchesName = batchesName;
+    }
+    public void setStillAvailableProse(String stillAvailableProse) {
+        this.stillAvailableProse = stillAvailableProse;
+    }
+    public void setBlacklistedConditionID(String blacklistedConditionID) {
+        this.blacklistedConditionID = blacklistedConditionID;
+    }
+    public void setOccurrenceWeight(float occurrenceWeight) {
+        this.occurrenceWeight = occurrenceWeight;
+    }
+    public void setHazardScale(float hazardScale) {
+        this.hazardScale = hazardScale;
+    }
+    public void setAbundanceCostMult(float abundanceCostMult) {
+        this.abundanceCostMult = abundanceCostMult;
+    }
+    public void setSkillReqChance(float skillReqChance) {
+        this.skillReqChance = skillReqChance;
+    }
+    public void setHazardReduction(float hazardReduction) {
+        this.hazardReduction = hazardReduction;
+    }
+    public void setDespoilYieldMult(float despoilYieldMult) {
+        this.despoilYieldMult = despoilYieldMult;
+    }
+    public void setMaxAbundance(int maxAbundance) {
+        this.maxAbundance = maxAbundance;
+    }
+    public void setMaxAbundancePerMonth(int maxAbundancePerMonth) {
+        this.maxAbundancePerMonth = maxAbundancePerMonth;
+    }
+    public void setOccurrenceLimit(int occurrenceLimit) {
+        this.occurrenceLimit = occurrenceLimit;
+    }
+    public void setFirstVisitData(int firstVisitData) {
+        this.firstVisitData = firstVisitData;
+    }
+    public void setAbundanceRequired(boolean abundanceRequired) {
+        this.abundanceRequired = abundanceRequired;
+    }
+    public void setDespoilPreventsRegen(boolean despoilPreventsRegen) {
+        this.despoilPreventsRegen = despoilPreventsRegen;
+    }
+    public void setDespoilRequiresSkill(boolean despoilRequiresSkill) {
+        this.despoilRequiresSkill = despoilRequiresSkill;
+    }
+    public void setOutput(int count, String commodityID) {
+        this.outputCount = count;
+        this.outputID = commodityID;
+    }
+    public void setInput(int index, int baseCount, String commodityId) {
+        if(index < 0 || index > 2) throw new IllegalArgumentException("The index must be at least 0 and at most 2");
+
+        Input newInput = new Input(commodityId, baseCount);
+
+        if(commodityId == null || commodityId.isEmpty()) {
+            if(index < inputs.size()) {
+                inputs.remove(index);
+            }
+        } else if(!newInput.isValid()) {
+            throw new IllegalArgumentException(commodityId + " is not a known commodity ID");
+        } else if(index < inputs.size()) {
+            inputs.set(index, newInput);
+        } else {
+            inputs.add(index, newInput);
+        }
+
+        calculateBaseInputCountsPerBatch();
+    }
+    
+    private void calculateBaseInputCountsPerBatch() {
+        float inputScale = 0;
+
+        for (Input input : getInputs()) {
+            float basePrice = input.isValid() ? input.getCommodity().getBasePrice() : 1;
+            inputScale += input.getBaseCount() * basePrice;
+        }
+
+        inputScale = getOutputValuePerBatch() / inputScale;
+
+        for (Input input : getInputs()) {
+            input.baseCountPerBatch = input.baseCount * inputScale;
+        }
     }
 
     public OperationType(JSONObject data) throws JSONException {
@@ -327,21 +460,7 @@ public class OperationType {
                 }
             }
 
-            // Calculate base input counts per batch
-            {
-                float inputScale = 0;
-
-                for (Input input : getInputs()) {
-                    float basePrice = input.isValid() ? input.getCommodity().getBasePrice() : 1;
-                    inputScale += input.getBaseCount() * basePrice;
-                }
-
-                inputScale = getOutputValuePerBatch() / inputScale;
-
-                for (Input input : getInputs()) {
-                    input.baseCountPerBatch = input.baseCount * inputScale;
-                }
-            }
+            calculateBaseInputCountsPerBatch();
         }
 
         String invalidCommodityIds = "";

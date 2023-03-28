@@ -226,6 +226,15 @@ public class Util {
 
         return id;
     }
+    public static boolean isIdMatchedByConditionOrGroup(String id, MarketConditionAPI mc) {
+        if(mc == null) return false;
+
+        if(mc.getId().equals(id)) return true;
+
+        return mc.getGenSpec() != null
+                && mc.getGenSpec().getGroup() != null
+                && mc.getGenSpec().getGroup().equals(id);
+    }
     public static void refreshKnownOperations() {
         for (LocationAPI loc : Global.getSector().getAllLocations()) {
             for (SectorEntityToken token : loc.getAllEntities()) {

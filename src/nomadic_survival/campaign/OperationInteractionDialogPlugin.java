@@ -4,16 +4,20 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
+import com.fs.starfarer.api.campaign.econ.SubmarketAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.impl.campaign.ids.Submarkets;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.Alignment;
 import com.fs.starfarer.api.ui.ValueDisplayMode;
 import com.fs.starfarer.api.util.Misc;
+import nomadic_survival.ModPlugin;
 import nomadic_survival.OperationType;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
 import nomadic_survival.campaign.rulecmd.SUN_NS_ConsiderPlanetaryOperations;
+import nomadic_survival.integration.BaseListener;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.*;
@@ -26,6 +30,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         INIT,
         CONSIDER,
         TOGGLE_PRESERVATION,
+        TOGGLE_INPUT_STORAGE,
+        TOGGLE_OUTPUT_STORAGE,
         DESPOIL,
         RETRIEVE,
         RETRIEVE_AND_LEAVE,
@@ -44,9 +50,13 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     private OperationType type;
     private OperationIntel intel;
     private boolean useAbundance;
-    private boolean despoil = false;
+    private boolean despoil = false,
+            drawFromColony = false,
+            outputToColony = false,
+            isCostPanelCreationNeeded = true;
     private int prevSelectedBatches = 0,
             selectedBatches = 0,
+            batchesDisplayedAtLastUpdate = 0,
             maxBatchesAvailableInAbundance,
             maxBatchesPlayerCanAfford,
             maxBatchesPlayerCanStore,
@@ -84,6 +94,10 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         switch (stage) {
             case INIT: {
+                boolean isFirstVisit = intel.isNotYetVisited();
+
+                isCostPanelCreationNeeded = true;
+
                 intel.showVisitDescription(text);
 
                 if (intel.isAbundanceRelevant()) {
@@ -108,6 +122,11 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 }
 
                 optionSelected(null, OptionId.CONSIDER);
+
+                for(BaseListener listener : BaseListener.getAll()) {
+                    try { listener.onSiteVisited(intel, dialog, isFirstVisit); }
+                    catch (Exception e) { ModPlugin.reportCrash(e, false); }
+                }
             } break;
             case CONSIDER: {
                 despoil = false;
@@ -116,8 +135,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     recalculateBatchLimit();
                     prevSelectedBatches = selectedBatches;
 
-                    if (!(intel.getType().isAbundanceRequired() && intel.isNonRenewableAbundanceDepleted())) {
-                        if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown()) {
+                    if (isCostPanelCreationNeeded && !(intel.getType().isAbundanceRequired() && intel.isNonRenewableAbundanceDepleted())) {
+                        if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown() && !drawFromColony) {
                             float min = playerFleet.getFleetData().getMinCrew();
                             float curr = playerFleet.getCargo().getCrew();
 
@@ -130,16 +149,22 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                                         "performance due to insufficient crew.", Misc.getNegativeHighlightColor());
                             }
                         }
-
-                        costPanel = text.addCostPanel("Projected outcome:", COST_HEIGHT, Misc.getTextColor(),
+                        costPanel = text.addCostPanel("Projected outcome:", COST_HEIGHT, Misc.getBasePlayerColor(),
                                 Misc.getDarkPlayerColor());
                         costPanel.setNumberOnlyMode(true);
                         costPanel.setWithBorder(false);
                         costPanel.setAlignment(Alignment.LMID);
                         costPanel.setComWidthOverride(120);
 
+//                        for(OperationIntel.Input input : intel.getInputs()) {
+//                            costPanel.addCost(input.getCommodityID(), "(text)", Misc.getGrayColor());
+//                        }
+
+                        batchesDisplayedAtLastUpdate = 0;
                         updateExchangeDisplay(maxBatches == 0 ? 1 : selectedBatches);
                     }
+
+                    isCostPanelCreationNeeded = false;
                 }
 
                 if(intel.getExcessStored() > 0) {
@@ -186,6 +211,19 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     }
                 }
 
+                if(intel.isColonyStorageAvailable()) {
+                    String outName = intel.getType().getOutput().getName();
+                    String inType = intel.getType().isRisky() ||  intel.isCrewAnInput(true) ? "Teams" : "Resources";
+
+                    options.addOption(outName + " will be sent to: "
+                                    + (outputToColony ? "Colony Storage" : "Your Fleet"),
+                            OptionId.TOGGLE_OUTPUT_STORAGE);
+
+                    options.addOption(inType + " will be sent from: "
+                                    + (drawFromColony ? "Colony Storage" : "Your Fleet"),
+                            OptionId.TOGGLE_INPUT_STORAGE);
+                }
+
                 if(nopeReason == null) {
                     options.addOption("Decide not to " + type.getShortName().toLowerCase() + " at this time", OptionId.BACK, null);
                     updateExchangeValueTooltip();
@@ -200,7 +238,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 if(maxBatches > 1 && intel.isRequiredSkillKnown()) {
                     String tooltip = null;
 
-                    if(maxBatches == maxBatchesPlayerCanStore && maxCapacityReduction > 0) {
+                    if(maxBatches == maxBatchesPlayerCanStore && maxCapacityReduction > 0 && !outputToColony) {
                         String capType = Util.getCargoTypeName(type.getOutput());
                         String upToMaybe = maxBatchesPlayerCanStore == 1 ? "" : "up to";
 
@@ -223,8 +261,27 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 recalculateBatchLimit();
                 optionSelected(null, OptionId.CONSIDER);
             } break;
+            case TOGGLE_INPUT_STORAGE: {
+                clearExchangeDisplay();
+                drawFromColony = !drawFromColony;
+//                prevSelectedBatches = selectedBatches = 0;
+                recalculateBatchLimit();
+                prevSelectedBatches = selectedBatches = maxBatches;
+                updateExchangeDisplay(selectedBatches);
+                optionSelected(null, OptionId.CONSIDER);
+            } break;
+            case TOGGLE_OUTPUT_STORAGE: {
+                clearExchangeDisplay();
+                outputToColony = !outputToColony;
+//                prevSelectedBatches = selectedBatches = 0;
+                recalculateBatchLimit();
+                prevSelectedBatches = selectedBatches = maxBatches;
+                updateExchangeDisplay(selectedBatches);
+                optionSelected(null, OptionId.CONSIDER);
+            } break;
             case DESPOIL: {
                 despoil = true;
+                isCostPanelCreationNeeded = true;
 
                 String gainPercent = (int)(type.getDespoilYieldMult() * 100) + "%";
                 String gain = "" + intel.getDespoilYield();
@@ -238,19 +295,22 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
                 options.addOption("Confirm the order to " + type.getDespoilName().toLowerCase(), OptionId.CONFIRM, null);
                 options.addOption("Reconsider", OptionId.CONSIDER);
+                options.setShortcut(OptionId.CONSIDER, Keyboard.KEY_ESCAPE, false, false, false, true);
             } break;
             case RETRIEVE: {
-                intel.retrieveExcess(text);
+                isCostPanelCreationNeeded = true;
+                intel.retrieveExcess(text, this);
                 optionSelected(null, OptionId.CONSIDER);
             } break;
             case RETRIEVE_AND_LEAVE: {
-                intel.retrieveExcess(text);
+                intel.retrieveExcess(text, this);
                 optionSelected(null, OptionId.LEAVE);
             } break;
             case CONFIRM: {
                 text.addPara("The operation was carried out successfully.");
 
-                CargoAPI cargo = playerFleet.getCargo();
+                CargoAPI cargo = getCargo(false);
+                int batchesPerformed = despoil ? 0 : selectedBatches;
                 int gained = despoil
                         ? intel.getDespoilYield()
                         : selectedBatches * type.getOutputCountPerBatch();
@@ -269,14 +329,10 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     if(useAbundance) intel.adjustAbundance(-selectedBatches * type.getOutputCountPerBatch());
                 }
 
-                intel.receiveOutput(text, gained);
+                intel.receiveOutput(text, gained, this);
                 intel.incurRepHitIfTrespass(text);
 
                 if(intel.getExcessStored() > 0) {
-                    text.addPara((type.getOutput().isPersonnel() ? "%s " : "%s units of ") + type.getOutput().getLowerCaseName()
-                                    + " were left behind after the operation due to insufficient storage capacity.",
-                            Misc.getHighlightColor(), "" + intel.getExcessStored());
-
                     options.addOption("Retrieve the excess " + type.getOutput().getLowerCaseName() + " and leave",
                             OptionId.RETRIEVE_AND_LEAVE);
                 }
@@ -288,6 +344,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
                 if(maxBatchesSelected && maxBatches > 0) {
                     prevSelectedBatches = selectedBatches = 0;
+                    isCostPanelCreationNeeded = true;
                     options.addOption("Consider another operation", OptionId.CONSIDER);
                 } else {
                     options.addOption("Consider another operation", OptionId.BACK);
@@ -295,6 +352,11 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
                 options.addOption("Continue", OptionId.LEAVE, null);
                 options.setShortcut(OptionId.LEAVE, Keyboard.KEY_ESCAPE, false, false, false, true);
+
+                for(BaseListener listener : BaseListener.getAll()) {
+                    try { listener.onOperationPerformed(intel, dialog, batchesPerformed); }
+                    catch (Exception e) { ModPlugin.reportCrash(e, false); }
+                }
             } break;
             case BACK: {
                 if(intel.isCompletelyDepleted()) intel.unregister();
@@ -311,8 +373,19 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         }
     }
 
+    public CargoAPI getCargo(boolean forOutput) {
+        boolean useColonyStorage = forOutput ? outputToColony : drawFromColony;
+
+        if(useColonyStorage) {
+            SubmarketAPI storage = intel.getPlanet().getMarket().getSubmarket(Submarkets.SUBMARKET_STORAGE);
+
+            if(storage != null) return storage.getCargo();
+        }
+
+        return playerFleet.getCargo();
+    }
     void clearExchangeDisplay() {
-        updateExchangeDisplay(-prevSelectedBatches);
+        updateExchangeDisplay(-batchesDisplayedAtLastUpdate);
         prevSelectedBatches = 0;
     }
     void updateExchangeValueTooltip() {
@@ -330,6 +403,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         }
     }
     void updateExchangeDisplay(int batches) {
+        if(batches == 0) batches = 1;
+
         int outputCount = (int)Math.floor(type.getOutputCountPerBatch() * batches);
         costPanel.addOrUpdateCost(type.getOutputID(), outputCount, Misc.getPositiveHighlightColor());
 
@@ -342,10 +417,13 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         costPanel.update();
 
+        batchesDisplayedAtLastUpdate += batches;
+
         updateExchangeValueTooltip();
     }
     boolean shouldDefaultToMax() {
-        return intel.getCostMultiplier(intel.isAbundanceAvailable()) <= 0
+        return intel.isColonyStorageAvailable()
+                || intel.getCostMultiplier(intel.isAbundanceAvailable()) <= 0
                 || !type.isAnySurvivalCommodityUsedAsInput();
     }
     boolean checkCapacityLimit(float perBatch, float capacity) {
@@ -366,7 +444,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         maxCapacityReduction = 0;
         float crewPerBatch = 0, cargoPerBatch = 0, fuelPerBatch = 0;
         CommoditySpecAPI out = type.getOutput();
-        CargoAPI cargo = playerFleet.getCargo();
+        CargoAPI inputCargo = getCargo(false);
 
         maxBatches = 50; // Triple digits can cause display issues, and 99 results in some values being impossible to select
         maxBatchesPlayerCanAfford = maxBatches;
@@ -380,7 +458,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         for(OperationIntel.Input input : intel.getInputs()) {
             double perBatch = input.getCountPerBatch(useAbundance);
             int limit = perBatch > 0
-                    ? (int)Math.floor(cargo.getCommodityQuantity(input.getCommodityID()) / perBatch)
+                    ? (int)Math.floor(inputCargo.getCommodityQuantity(input.getCommodityID()) / perBatch)
                     : Integer.MAX_VALUE;
 
             cargoPerBatch -= input.getCommodity().getCargoSpace() * perBatch;
@@ -394,9 +472,13 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             maxBatchesAvailableInAbundance = intel.getCurrentAbundanceBatches();
         }
 
-        if(checkCapacityLimit(cargoPerBatch, cargo.getSpaceLeft())) maxCapacityReduction = 1;
-        if(checkCapacityLimit(crewPerBatch, cargo.getFreeCrewSpace())) maxCapacityReduction = 1;
-        if(checkCapacityLimit(fuelPerBatch, cargo.getFreeFuelSpace())) maxCapacityReduction = 1;
+        if(!outputToColony) {
+            CargoAPI outputCargo = getCargo(true);
+
+            if (checkCapacityLimit(cargoPerBatch, outputCargo.getSpaceLeft())) maxCapacityReduction = 1;
+            if (checkCapacityLimit(crewPerBatch, outputCargo.getFreeCrewSpace())) maxCapacityReduction = 1;
+            if (checkCapacityLimit(fuelPerBatch, outputCargo.getFreeFuelSpace())) maxCapacityReduction = 1;
+        }
 
         if(maxBatches > maxBatchesPlayerCanAfford) maxBatches = maxBatchesPlayerCanAfford;
         if(maxBatches > maxBatchesPlayerCanStore) maxBatches = maxBatchesPlayerCanStore;

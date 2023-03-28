@@ -9,6 +9,7 @@ import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
 import com.fs.starfarer.api.characters.SkillSpecAPI;
 import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
+import com.fs.starfarer.api.impl.campaign.ids.Submarkets;
 import com.fs.starfarer.api.impl.campaign.ids.Tags;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
 import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
@@ -19,6 +20,7 @@ import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 import com.thoughtworks.xstream.XStream;
 import nomadic_survival.*;
+import nomadic_survival.campaign.OperationInteractionDialogPlugin;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
@@ -164,6 +166,11 @@ public class OperationIntel extends BaseIntelPlugin {
     public boolean isPlanetClaimedByNPC() {
         return Util.isPlanetClaimedByNPC(planet);
     }
+    public boolean isColonyStorageAvailable() {
+        MarketAPI market = planet.getMarket();
+
+        return market != null && Misc.playerHasStorageAccess(market);
+    }
     public boolean isCurrentlyAvailable() {
         return !isCompletelyDepleted() || getExcessStored() > 0;
     }
@@ -286,26 +293,48 @@ public class OperationIntel extends BaseIntelPlugin {
         return excessStored;
     }
     public void setExcessStored(int excess) { excessStored = excess; }
-    public void retrieveExcess(TextPanelAPI text) {
+    public void retrieveExcess(TextPanelAPI text, OperationInteractionDialogPlugin dialog) {
         int gained = getExcessStored();
 
         setExcessStored(0);
-        receiveOutput(text, gained);
+        receiveOutput(text, gained, dialog);
     }
-    public void receiveOutput(TextPanelAPI text, int gained) {
-        CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+    public void receiveOutput(TextPanelAPI text, int gained, OperationInteractionDialogPlugin dialog) {
+        CargoAPI cargo = dialog.getCargo(true);
         float cap = cargo.getSpaceLeft();
+        float spacePerUnit = 1;
+        float spaceRequired;
 
-        if(getType().getOutput().isPersonnel()) cap = cargo.getFreeCrewSpace();
+        if(cargo.getFleetData() == null) cap = Float.MAX_VALUE;
+        else if(getType().getOutput().isPersonnel()) cap = cargo.getFreeCrewSpace();
         else if(getType().getOutput().isFuel()) cap = cargo.getFreeFuelSpace();
+        else spacePerUnit = getType().getOutput().getCargoSpace();
 
-        if(gained > cap && cap > 0) {
-            setExcessStored(gained - (int)cap);
-            gained -= getExcessStored();
+        spaceRequired = gained * spacePerUnit;
+
+        if(spaceRequired > cap && cap > 0 && spacePerUnit > 0) {
+            int stored = (int)((gained - cap) / spacePerUnit);
+            String outputName = getType().getOutput().getLowerCaseName();
+            String unitsOrNot = getType().getOutput().isPersonnel() ? "%s " : "%s units of ";
+            String message;
+
+            if(isColonyStorageAvailable()) {
+                CargoAPI storage = getPlanet().getMarket().getSubmarket(Submarkets.SUBMARKET_STORAGE).getCargo();
+                storage.addCommodity(getType().getOutputID(), stored);
+                message = " were sent to colony storage due to insufficient fleet storage capacity.";
+            } else {
+                setExcessStored(stored);
+                message = " were left behind after the operation due to insufficient storage capacity.";
+            }
+
+            gained -= stored;
+            AddRemoveCommodity.addCommodityGainText(getType().getOutputID(), gained, text);
+            text.addPara(unitsOrNot + outputName + message, Misc.getHighlightColor(), "" + stored);
+        } else {
+            AddRemoveCommodity.addCommodityGainText(getType().getOutputID(), gained, text);
         }
 
         cargo.addCommodity(getType().getOutputID(), gained);
-        AddRemoveCommodity.addCommodityGainText(getType().getOutputID(), gained, text);
     }
     public List<Input> getInputs() {
         List<Input> retVal = new ArrayList<>(getType().getInputs().size());
@@ -739,10 +768,11 @@ public class OperationIntel extends BaseIntelPlugin {
         Set<String> tags = super.getIntelTags(map);
         SearchIntelV2 search = SearchIntelV2.getInstance();
 
-        if(isImportant() || search == null) {
+        if(!ModPlugin.SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN && !isRequiredSkillKnown()) {
+            tags.remove(Tags.INTEL_LOCAL);
+        } else if(isImportant() || search == null) {
             tags.add(TAG);
         } else if((!search.isFilterUnavailableSet() || isCurrentlyAvailable())
-                && (ModPlugin.SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN || isRequiredSkillKnown())
                 && search.isCommoditySelected(getType())
                 && search.isOpSelected(getType())) {
 

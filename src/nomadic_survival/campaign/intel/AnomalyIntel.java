@@ -18,6 +18,7 @@ import com.fs.starfarer.campaign.BaseCampaignEntity;
 import com.fs.starfarer.campaign.CampaignPlanet;
 import nomadic_survival.ModPlugin;
 import nomadic_survival.Util;
+import nomadic_survival.integration.BaseListener;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.lwjgl.util.vector.Vector2f;
@@ -722,6 +723,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
         // Progress stage
         {
+            Stage previousStage = stage;
             boolean stageChanged = false;
 
             if(stage.ordinal() < Stage.Inert.ordinal() && !ModPlugin.ALLOW_ANOMALY_TOGGLE) {
@@ -773,6 +775,11 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 if(stage.ordinal() > highestStage.ordinal()) highestStage = stage;
 
                 Global.getSector().getCampaignUI().addMessage(this, CommMessageAPI.MessageClickAction.INTEL_TAB, this);
+
+                for(BaseListener listener : BaseListener.getAll()) {
+                    try { listener.onAnomalyStageChanged(this, previousStage); }
+                    catch (Exception e) { ModPlugin.reportCrash(e, false); }
+                }
             }
         }
 

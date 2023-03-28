@@ -20,6 +20,7 @@ import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.OperationIntel;
 import nomadic_survival.campaign.intel.SearchIntel;
 import nomadic_survival.campaign.intel.SearchIntelV2;
+import nomadic_survival.integration.BaseListener;
 import org.apache.log4j.Logger;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -152,6 +153,9 @@ public class ModPlugin extends BaseModPlugin {
 
     public static ModPlugin getInstance() { return instance; }
     public static boolean reportCrash(Exception exception) {
+        return reportCrash(exception, true);
+    }
+    public static boolean reportCrash(Exception exception, boolean displayToUser) {
         try {
             String stackTrace = "", message = "Nomadic Survival encountered an error!\nPlease let the mod author know.";
 
@@ -162,7 +166,9 @@ public class ModPlugin extends BaseModPlugin {
 
             Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
 
-            if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
+            if (!displayToUser) {
+                return true;
+            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
                 Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
                 Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
             } else if (Global.getSector() != null) {
@@ -290,12 +296,12 @@ public class ModPlugin extends BaseModPlugin {
             OperationType.INSTANCE_REGISTRY.clear();
             OperationType.REGISTRY_BY_CONDITION_GROUP.clear();
             ConditionAdjustments.INSTANCE_REGISTRY.clear();
+            OperationType.RECYCLE_GROUPS.clear();
 
             JSONArray jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("condition_id", CONDITION_ADJUST_LIST_PATH, ID);
             for (int i = 0; i < jsonArray.length(); i++) new ConditionAdjustments(jsonArray.getJSONObject(i));
 
             jsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("id", RECYCLE_GROUPS_LIST_PATH, ID);
-            OperationType.RECYCLE_GROUPS.clear();
             for (int i = 0; i < jsonArray.length(); i++) {
                 JSONObject o = jsonArray.getJSONObject(i);
                 String id = o.getString("id");
@@ -331,6 +337,10 @@ public class ModPlugin extends BaseModPlugin {
             settingsAlreadyRead = readSettings();
         } catch (Exception e) {
             return settingsAlreadyRead = reportCrash(e);
+        }
+
+        for(BaseListener listener : BaseListener.getAll()) {
+            try { listener.onDataLoaded(); } catch (Exception e) { ModPlugin.reportCrash(e, false); }
         }
 
         return true;
