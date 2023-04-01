@@ -39,31 +39,31 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         BACK,
         LEAVE,
     }
-    private static final String SELECTOR_ID = "sun_ns_selector";
+    protected static final String SELECTOR_ID = "sun_ns_selector";
 
-    private InteractionDialogAPI dialog;
-    private TextPanelAPI text;
-    private OptionPanelAPI options;
-    private CampaignFleetAPI playerFleet;
-    private int maxCapacityReduction = 0;
-    private InteractionDialogPlugin formerPlugin;
-    private OperationType type;
-    private OperationIntel intel;
-    private boolean useAbundance;
-    private boolean despoil = false,
+    protected InteractionDialogAPI dialog;
+    protected TextPanelAPI text;
+    protected OptionPanelAPI options;
+    protected CampaignFleetAPI playerFleet;
+    protected int maxCapacityReduction = 0;
+    protected InteractionDialogPlugin formerPlugin;
+    protected OperationType type;
+    protected OperationIntel intel;
+    protected boolean useAbundance;
+    protected boolean despoil = false,
             drawFromColony = false,
             outputToColony = false,
             isCostPanelCreationNeeded = true;
-    private int prevSelectedBatches = 0,
+    protected int prevSelectedBatches = 0,
             selectedBatches = 0,
             batchesDisplayedAtLastUpdate = 0,
             maxBatchesAvailableInAbundance,
             maxBatchesPlayerCanAfford,
             maxBatchesPlayerCanStore,
             maxBatches = 0;
-    private ResourceCostPanelAPI costPanel;
-    private String outputName;
-    private OptionId stage = null;
+    protected ResourceCostPanelAPI costPanel;
+    protected String outputName;
+    protected OptionId stage = null;
 
     public OperationInteractionDialogPlugin(InteractionDialogPlugin formerPlugin, OperationIntel intel) {
         this.formerPlugin = formerPlugin;
@@ -84,9 +84,28 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         optionSelected(null, OptionId.INIT);
     }
 
+    protected void removeCommodity(CargoAPI cargo, String commodityId, int amountLost) {
+        //CR-rem
+        cargo.removeCommodity(commodityId, amountLost);
+        //CR-DRe
+        AddRemoveCommodity.addCommodityLossText(commodityId, amountLost, text);
+    }
+    protected float getAvailableCommodityAmount(CargoAPI cargo, String commodity) {
+        return cargo.getCommodityQuantity(commodity);
+    }
+    protected float getCargoSpace(CommoditySpecAPI spec) {
+        return spec.getCargoSpace();
+    }
+    protected float getCrewSpace(CommoditySpecAPI spec) {
+        return spec.isPersonnel() ? 1 : 0;
+    }
+    protected float getFuelSpace(CommoditySpecAPI spec) {
+        return spec.isFuel() ? 1 : 0;
+    }
+
     @Override
     public void optionSelected(String optionText, Object optionData) {
-        if (optionData == null || !(optionData instanceof  OptionId)) return;
+        if (!(optionData instanceof OptionId)) return;
 
         stage = (OptionId) optionData;
 
@@ -140,10 +159,12 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                             float min = playerFleet.getFleetData().getMinCrew();
                             float curr = playerFleet.getCargo().getCrew();
 
-                            if (curr > min) {
+                            if(min == 0) {
+                                // Show no warning in cases where the fleet is fully automated
+                            } if (curr >= min) {
                                 text.addPara("Your " + Util.getShipOrFleet() + " will suffer degraded performance if " +
                                                 "more than %s crew are lost.",
-                                        Misc.getHighlightColor(), (int) (curr - min) + "");
+                                        Misc.getHighlightColor(), (int) (curr - min + 1) + "");
                             } else {
                                 text.addPara("Your " + Util.getShipOrFleet() + " is already suffering degraded " +
                                         "performance due to insufficient crew.", Misc.getNegativeHighlightColor());
@@ -320,10 +341,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 } else {
                     for (OperationIntel.Input input : intel.getInputs()) {
                         int lost = selectedBatches * input.getCountPerBatch(useAbundance);
-                        if(lost > 0) {
-                            cargo.removeCommodity(input.getCommodityID(), lost);
-                            AddRemoveCommodity.addCommodityLossText(input.getCommodityID(), lost, text);
-                        }
+                        if(lost > 0) removeCommodity(cargo, input.getCommodityID(), lost);
                     }
 
                     if(useAbundance) intel.adjustAbundance(-selectedBatches * type.getOutputCountPerBatch());
@@ -458,12 +476,12 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         for(OperationIntel.Input input : intel.getInputs()) {
             double perBatch = input.getCountPerBatch(useAbundance);
             int limit = perBatch > 0
-                    ? (int)Math.floor(inputCargo.getCommodityQuantity(input.getCommodityID()) / perBatch)
+                    ? (int)Math.floor(getAvailableCommodityAmount(inputCargo, input.getCommodityID()) / perBatch)
                     : Integer.MAX_VALUE;
 
-            cargoPerBatch -= input.getCommodity().getCargoSpace() * perBatch;
-            fuelPerBatch -= input.getCommodity().isFuel() ? perBatch : 0;
-            crewPerBatch -= input.getCommodity().isPersonnel() ? perBatch : 0;
+            cargoPerBatch -= getCargoSpace(input.getCommodity()) * perBatch;
+            fuelPerBatch -= getFuelSpace(input.getCommodity()) * perBatch;
+            crewPerBatch -= getCrewSpace(input.getCommodity()) * perBatch;
 
             if(maxBatchesPlayerCanAfford > limit) maxBatchesPlayerCanAfford = limit;
         }

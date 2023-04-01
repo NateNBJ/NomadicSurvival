@@ -511,11 +511,13 @@ public class OperationIntel extends BaseIntelPlugin {
             para += getType().getOutput().getLowerCaseName() + " can be acquired here";
 
             if(!getType().isAbundanceRequired()) {
-                para += !isAbundanceAvailable() ? " at reduced " : " at roughly %s ";
+                para += !isAbundanceAvailable() ? " at reduced%s " : " at roughly %s ";
                 para += getType().isRisky() ? "risk" : "cost";
                 efficiency = getCostMultiplier(true) > 0
                         ? (int)(getType().getAbundanceCostMult() * 100) + "%"
                         : "no";
+
+                if(!isAbundanceAvailable()) efficiency = "";
             } else {
                 para += "%s";
             }
