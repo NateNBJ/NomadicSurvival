@@ -11,6 +11,7 @@ import nomadic_survival.CampaignScript;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
 
+import java.awt.*;
 import java.util.List;
 import java.util.Map;
 
@@ -62,16 +63,17 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
 
             for (OperationIntel op : operations) {
                 String outputName = op.getType().getOutput().getLowerCaseName();
+                Color clr = op.isRequiredSkillKnown() ? Misc.getTextColor() : Misc.getGrayColor();
 
                 if(op.getType().isRefitOp()) {
                     CampaignScript.setShouldActivateFreeRefitState(true);
 
-                    // This is op is irrelevant if the planet has a market, so don't show it
+                    // This op is irrelevant if the planet has a market, so don't show it
                     if(!planet.getMarket().isPlanetConditionMarketOnly()) continue;
                 }
 
                 TooltipMakerAPI iwt = tt.beginImageWithText(op.getIcon(), 20);
-                iwt.addPara(op.getType().getPlaceDesc(), 3, Misc.getTextColor(), Misc.getTextColor(), outputName);
+                iwt.addPara(op.getType().getPlaceDesc(), 3, clr, clr, outputName);
                 tt.addImageWithText(0);
             }
 

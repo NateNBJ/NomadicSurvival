@@ -695,9 +695,12 @@ public class OperationIntel extends BaseIntelPlugin {
             }
 
             if(!getType().isRefitOp()) {
-                float profit = getProfitability(true) * 100;
-                String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : ((int) profit) + "%";
-                if (profit < 0) clr = Misc.getNegativeHighlightColor();
+                int profit = (int)(getProfitability(true) * 100f);
+                String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : profit + "%";
+
+                if (profit == 0) clr = Misc.getGrayColor();
+                else if (profit < 0) clr = Misc.getNegativeHighlightColor();
+
                 info.addPara("Profitability: %s", pad, tc, clr, profitStr);
             }
         }
