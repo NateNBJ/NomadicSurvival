@@ -142,15 +142,33 @@ public class OperationIntel extends BaseIntelPlugin {
         return Misc.getDistanceToPlayerLY(planet);
     }
     public float getLYFromDestination() {
+        CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+//        SectorEntityToken target = pf.getInteractionTarget();
+//        SectorEntityToken target = Global.getSector().getCampaignUI().getCurrentCourseTarget();
+        SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
+//
+//
+//
+        if(target == null) return getLYFromPlayer();
+//        runcode Console.showMessage(Global.getSector().getUIData().getCourseTarget());
         return Misc.getDistanceLY(
-                Global.getSector().getPlayerFleet().getMoveDestination(),
-                planet.getLocationInHyperspace()
-        );
+                target.getLocationInHyperspace(),
+//                Util.getFinalDestinationLocation(),
+                planet.getLocationInHyperspace());
     }
     public float getLYFromRoute() {
+        CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+//        SectorEntityToken target = pf.getInteractionTarget();
+//        SectorEntityToken target = Global.getSector().getCampaignUI().getCurrentCourseTarget();
+        SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
+//        Global.getSector().getCampaignUI()
+//                Global.getSector().getPlayerFleet().getMoveDestination(),
+
+        if(target == null) return getLYFromPlayer();
+
         Vector2f closestPointToRoute = Misc.closestPointOnSegmentToPoint(
-                Global.getSector().getPlayerFleet().getLocationInHyperspace(),
-                Global.getSector().getPlayerFleet().getMoveDestination(),
+                pf.getLocationInHyperspace(),
+                target.getLocationInHyperspace(),
                 planet.getLocationInHyperspace()
         );
 
@@ -230,6 +248,10 @@ public class OperationIntel extends BaseIntelPlugin {
 
             return inVal <= 0 ? Float.POSITIVE_INFINITY : getType().getOutputValuePerBatch() / (float) inVal - 1;
         }
+    }
+    public String getProfitabilityString(boolean withAbundance) {
+        int profit = (int)(getProfitability(withAbundance) * 100f);
+        return profit == Integer.MAX_VALUE ? "High" : profit + "%";
     }
     public int getCurrentAbundance() {
         float monthsSinceLastVisit = Global.getSector().getClock().getElapsedDaysSince(timestampOfLastVisit) / 30f;
@@ -433,7 +455,7 @@ public class OperationIntel extends BaseIntelPlugin {
         if(isPlanetColonized()) {
             FactionAPI claimant = planet.getFaction();
 
-            if (!claimant.isPlayerFaction()) {
+            if (!claimant.isPlayerFaction() && claimant != Misc.getCommissionFaction()) {
                 CoreReputationPlugin.CustomRepImpact impact = new CoreReputationPlugin.CustomRepImpact();
                 impact.delta = Global.getSector().getPlayerFleet().isTransponderOn() ? -0.05f : -0.01f;
 
@@ -457,8 +479,8 @@ public class OperationIntel extends BaseIntelPlugin {
 
             if(markAsNew) setNew(true);
 
-            if (!mgr.hasIntelOfClass(SearchIntelV2.class)) {
-                SearchIntelV2 search = new SearchIntelV2();
+            if (!mgr.hasIntelOfClass(SearchIntel.class)) {
+                SearchIntel search = new SearchIntel();
                 search.setNew(false);
                 mgr.addIntel(search, true);
             }
@@ -696,7 +718,7 @@ public class OperationIntel extends BaseIntelPlugin {
 
             if(!getType().isRefitOp()) {
                 int profit = (int)(getProfitability(true) * 100f);
-                String profitStr = profit == Float.POSITIVE_INFINITY ? "High" : profit + "%";
+                String profitStr = profit == Integer.MAX_VALUE ? "High" : profit + "%";
 
                 if (profit == 0) clr = Misc.getGrayColor();
                 else if (profit < 0) clr = Misc.getNegativeHighlightColor();
@@ -716,8 +738,7 @@ public class OperationIntel extends BaseIntelPlugin {
     public void createSmallDescription(TooltipMakerAPI info, float width, float height) {
         float opad = 10f;
 
-        // TODO - show planet image if the option becomes practical?
-        info.addImages(width, 80, opad, opad * 2f, getType().getOutput().getIconName());
+        info.showPlanetInfo(planet, width, width / 2, false, opad);
 
         if(isPlanetSurveyed()) {
             String desc = Util.isPlanetClaimedByNPC(planet)
@@ -771,7 +792,7 @@ public class OperationIntel extends BaseIntelPlugin {
     @Override
     public Set<String> getIntelTags(SectorMapAPI map) {
         Set<String> tags = super.getIntelTags(map);
-        SearchIntelV2 search = SearchIntelV2.getInstance();
+        SearchIntel search = SearchIntel.getInstance();
 
         if(!ModPlugin.SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN && !isRequiredSkillKnown()) {
             tags.remove(Tags.INTEL_LOCAL);
@@ -794,7 +815,7 @@ public class OperationIntel extends BaseIntelPlugin {
     @Override
     public String getSortString() {
         String retVal = getSmallDescriptionTitle();
-        SearchIntelV2 search = SearchIntelV2.getInstance();
+        SearchIntel search = SearchIntel.getInstance();
 
         if(search == null) return "";
 

@@ -8,6 +8,7 @@ import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 import nomadic_survival.CampaignScript;
+import nomadic_survival.ModPlugin;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
 
@@ -52,7 +53,7 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
         if(!isPlanetOpsAlreadyListed()) {
             if (planet == null) {
                 return false;
-            } else if (Util.isPlanetClaimedByNPC(planet)) {
+            } else if (Util.isPlanetColonizedByNPC(planet)) {
                 text.addPara("Opportunities for planetary operations on " + planet.getName() + ":");
             } else {
                 text.addPara("While exploring " + planet.getName() + ", your survey team discovered the following " +
@@ -73,7 +74,9 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
                 }
 
                 TooltipMakerAPI iwt = tt.beginImageWithText(op.getIcon(), 20);
-                iwt.addPara(op.getType().getPlaceDesc(), 3, clr, clr, outputName);
+                String profit = ModPlugin.SHOW_EXTRA_INFO_ABOUT_PROFITABILITY
+                        ? " (" + op.getProfitabilityString(op.isAbundanceAvailable()).replace("%", "%%") + ")" : "";
+                iwt.addPara(op.getType().getPlaceDesc() + profit, 3, clr, clr, outputName);
                 tt.addImageWithText(0);
             }
 

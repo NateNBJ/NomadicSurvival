@@ -85,9 +85,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     }
 
     protected void removeCommodity(CargoAPI cargo, String commodityId, int amountLost) {
-        //CR-rem
         cargo.removeCommodity(commodityId, amountLost);
-        //CR-DRe
         AddRemoveCommodity.addCommodityLossText(commodityId, amountLost, text);
     }
     protected float getAvailableCommodityAmount(CargoAPI cargo, String commodity) {
@@ -402,25 +400,35 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         return playerFleet.getCargo();
     }
-    void clearExchangeDisplay() {
+
+    protected void clearExchangeDisplay() {
         updateExchangeDisplay(-batchesDisplayedAtLastUpdate);
         prevSelectedBatches = 0;
     }
-    void updateExchangeValueTooltip() {
+    protected void updateExchangeValueTooltip() {
         if(selectedBatches > 0) {
             int in = intel.getInputValuePerBatch(useAbundance) * selectedBatches;
             int out = type.getOutputValuePerBatch() * selectedBatches;
-            String val = Misc.getDGSCredits(out - in);
-            String equation = String.format("%s - %s = " + val, out, in);
+            String val = Misc.getDGSCredits(out - in) + " (" + intel.getProfitabilityString(useAbundance).replace("%", "%%") + ")";
+            String msg = String.format("%s - %s = " + val, out, in) + "\n\nAfter the operation you will have:";
+            float have = getCargo(false).getCommodityQuantity(intel.getType().getOutputID());
+            float remaining = have + intel.getType().getOutputCountPerBatch() * selectedBatches;
+            msg += "\n    " + (int)remaining + "  " + intel.getType().getOutput().getLowerCaseName();
 
-            options.setTooltip(OptionId.CONFIRM, "Base exchange value:\n" + equation);
+            for(OperationIntel.Input input : intel.getInputs()) {
+                have = getCargo(false).getCommodityQuantity(input.getCommodityID());
+                remaining = have - input.getCountPerBatch(useAbundance) * selectedBatches;
+                msg += "\n    " + (int)remaining + "  " + input.getCommodity().getLowerCaseName();
+            }
+
+            options.setTooltip(OptionId.CONFIRM, "Base exchange value:\n" + msg);
             options.setTooltipHighlightColors(OptionId.CONFIRM, out - in > 0
                     ? Misc.getPositiveHighlightColor()
                     : Misc.getNegativeHighlightColor());
             options.setTooltipHighlights(OptionId.CONFIRM, val);
         }
     }
-    void updateExchangeDisplay(int batches) {
+    protected void updateExchangeDisplay(int batches) {
         if(batches == 0) batches = 1;
 
         int outputCount = (int)Math.floor(type.getOutputCountPerBatch() * batches);
@@ -439,12 +447,12 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         updateExchangeValueTooltip();
     }
-    boolean shouldDefaultToMax() {
+    protected boolean shouldDefaultToMax() {
         return intel.isColonyStorageAvailable()
                 || intel.getCostMultiplier(intel.isAbundanceAvailable()) <= 0
                 || !type.isAnySurvivalCommodityUsedAsInput();
     }
-    boolean checkCapacityLimit(float perBatch, float capacity) {
+    protected boolean checkCapacityLimit(float perBatch, float capacity) {
         if(capacity <= 0) { // Then there's no point in limiting based on capacity
             return false;
         } else if(perBatch > 0 && perBatch * maxBatchesPlayerCanStore > capacity) {
@@ -458,7 +466,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         return false;
     }
-    void recalculateBatchLimit() {
+    protected void recalculateBatchLimit() {
         maxCapacityReduction = 0;
         float crewPerBatch = 0, cargoPerBatch = 0, fuelPerBatch = 0;
         CommoditySpecAPI out = type.getOutput();

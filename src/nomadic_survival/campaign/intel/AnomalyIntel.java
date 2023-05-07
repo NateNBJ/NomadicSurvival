@@ -6,8 +6,8 @@ import com.fs.starfarer.api.campaign.comm.CommMessageAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.combat.MutableStat;
 import com.fs.starfarer.api.combat.ShipHullSpecAPI;
+import com.fs.starfarer.api.combat.StatBonus;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
-import com.fs.starfarer.api.fleet.RepairTrackerAPI;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.HullMods;
 import com.fs.starfarer.api.impl.campaign.ids.Tags;
@@ -136,8 +136,23 @@ public class AnomalyIntel extends BaseIntelPlugin {
         return 1 + 0.01f * stage.getFuelConsumptionPercentIncrease(fuelVuln);
     }
     public float getDataPercentIncreaseFromSensors() {
-        float range = pf.getSensorStrength();
-        return pf.getSensorRangeMod().computeEffective(range);
+        final String CHEAT_ID = "lw_console_reveal";
+        final StatBonus rangeMod = pf.getStats().getSensorRangeMod();
+        final StatBonus strengthMod = pf.getStats().getSensorStrengthMod();
+        float retVal = pf.getSensorStrength();
+
+
+        if (strengthMod.getFlatBonus(CHEAT_ID) != null) {
+            retVal -= strengthMod.getFlatBonus(CHEAT_ID).getValue();
+        }
+
+        retVal = pf.getSensorRangeMod().computeEffective(retVal);
+
+        if (rangeMod.getFlatBonus(CHEAT_ID) != null) {
+            retVal -= rangeMod.getFlatBonus(CHEAT_ID).getValue();
+        }
+
+        return Math.min(2500, retVal);
     }
     public int getTotalDataPerLY() {
         return (int)(stage.getDataPerLY() * getDataMultFromSensors());
@@ -236,6 +251,87 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
         return retVal;
     }
+    public void adjustFuelConsumptionForSystemTooltip(float lyToSystem) {
+        MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
+        fuelUse.unmodify(EFFECT_ID);
+        float vanillaUse = pf.getLogistics().getFuelCostPerLightYear();
+        float vanillaNeededFuel = vanillaUse * lyToSystem;
+        float modNeededFuel = 0;
+
+        float simFuel = pf.getCargo().getFuel();
+        float simTraveledTotal = lyTraveled;
+        float simTravelProgress = 0;
+        Stage simStage = stage;
+
+        for (int i = 0; i < 100; ++i) {
+            Stage next = simStage.getNext();
+            float simTravel = Float.MAX_VALUE;
+            VulnerabilityLevel simVL = simFuel <= 0 ? VulnerabilityLevel.Vulnerable : getFuelVulnerability(simFuel);
+            float simFuelUseMult = 1 + 0.01f * simStage.getFuelConsumptionPercentIncrease(simVL);
+            float vlFuel = simFuel <= 0 ? Float.MAX_VALUE : getAmountOfMostVulnerableFuel(simFuel);
+            float distToNextStage = next != null ? next.getLyToReach() - simTraveledTotal : simTravel;
+            float distToVLFuelDepleted = simFuel <= 0 ? Float.MAX_VALUE : vlFuel / (vanillaUse * simFuelUseMult);
+
+            if(simTravel > distToVLFuelDepleted) {
+                simTravel = distToVLFuelDepleted;
+            }
+            if(simTravel > distToNextStage) {
+                simTravel = distToNextStage;
+                simStage = next;
+            }
+
+            if(simTravelProgress + simTravel >= lyToSystem) {
+                modNeededFuel += (lyToSystem - simTravelProgress) * vanillaUse * simFuelUseMult;
+                break;
+            }
+
+            simTravelProgress += simTravel;
+            simTraveledTotal += simTravel;
+            simFuel -= simTravel * vanillaUse * simFuelUseMult;
+            modNeededFuel += simTravel * vanillaUse * simFuelUseMult;
+        }
+
+
+        if(vanillaNeededFuel > 0) {
+            fuelUse.modifyMult(EFFECT_ID, modNeededFuel / vanillaNeededFuel);
+        }
+    }
+    public void adjustFuelConsumptionForFuelRangeIndicator() {
+        MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
+        float vanillaUse = pf.getLogistics().getFuelCostPerLightYear();
+        float vanillaRange = pf.getCargo().getFuel() / vanillaUse;
+
+        float modRange = 0;
+        float simFuel = pf.getCargo().getFuel();
+        float simTraveled = lyTraveled;
+        Stage simStage = stage;
+
+        for (int i = 0; i < 100 && simFuel > 0; ++i) {
+            Stage next = simStage.getNext();
+            float simTravel = Float.MAX_VALUE;
+            VulnerabilityLevel simVL = getFuelVulnerability(simFuel);
+            float simFuelUseMult = 1 + 0.01f * simStage.getFuelConsumptionPercentIncrease(simVL);
+            float vlFuel = getAmountOfMostVulnerableFuel(simFuel);
+            float distToNextStage = next != null ? next.getLyToReach() - simTraveled : simTravel;
+            float distToVLFuelDepleted = vlFuel / (vanillaUse * simFuelUseMult);
+
+            if(simTravel > distToVLFuelDepleted) {
+                simTravel = distToVLFuelDepleted;
+            }
+            if(simTravel > distToNextStage) {
+                simTravel = distToNextStage;
+                simStage = next;
+            }
+
+            modRange += simTravel;
+            simTraveled += simTravel;
+            simFuel -= simTravel * vanillaUse * simFuelUseMult;
+        }
+
+        if(modRange > 0) {
+            fuelUse.modifyMult(EFFECT_ID, vanillaRange / modRange);
+        }
+    }
 
     void resetStage() {
         stage = Stage.Inert;
@@ -272,12 +368,22 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     public AnomalyIntel() {
         Global.getSector().addScript(this);
-        setImportant(false);
-        setNew(false);
-        setHidden(true);
 
         pf = Global.getSector().getPlayerFleet();
         disallowed = false;
+
+        if(ModPlugin.VETERAN_MODE) {
+            convertingExcessFuel = true;
+            stage = Stage.Inert;
+            highestStage = Stage.Extreme;
+            setHidden(false);
+            setNew(true);
+            setImportant(true);
+        } else {
+            setHidden(true);
+            setNew(false);
+            setImportant(false);
+        }
     }
 
     @Override
@@ -643,61 +749,12 @@ public class AnomalyIntel extends BaseIntelPlugin {
             if (tab == CoreUITabId.INTEL || tab == CoreUITabId.MAP || isInDialog) {
                 // Adjust fuel usage so the fuel range circles account for the anomaly
 
-                float vanillaUse = pf.getLogistics().getFuelCostPerLightYear();
-                float vanillaRange = pf.getCargo().getFuel() / vanillaUse;
+                adjustFuelConsumptionForFuelRangeIndicator();
+            } else {
+                Global.getSector().getCampaignUI().setSuppressFuelRangeRenderingOneFrame(true);
 
-                float modRange = 0;
-                float simFuel = pf.getCargo().getFuel();
-                float simTraveled = lyTraveled;
-                Stage simStage = stage;
-
-                for (int i = 0; i < 100 && simFuel > 0; ++i) {
-                    Stage next = simStage.getNext();
-                    float simTravel = Float.MAX_VALUE;
-                    VulnerabilityLevel simVL = getFuelVulnerability(simFuel);
-                    float simFuelUseMult = 1 + 0.01f * simStage.getFuelConsumptionPercentIncrease(simVL);
-                    float vlFuel = getAmountOfMostVulnerableFuel(simFuel);
-                    float distToNextStage = next != null ? next.getLyToReach() - simTraveled : simTravel;
-                    float distToVLFuelDepleted = vlFuel / (vanillaUse * simFuelUseMult);
-
-                    if(simTravel > distToVLFuelDepleted) {
-                        simTravel = distToVLFuelDepleted;
-                    }
-                    if(simTravel > distToNextStage) {
-                        simTravel = distToNextStage;
-                        simStage = next;
-                    }
-
-                    modRange += simTravel;
-                    simTraveled += simTravel;
-                    simFuel -= simTravel * vanillaUse * simFuelUseMult;
-                }
-
-                if(modRange > 0) {
-                    fuelUse.modifyMult(EFFECT_ID, vanillaRange / modRange);
-                }
-            } else if (fuelUseMult != 1 && pf.isInHyperspace()) {
-                fuelUse.modifyMult(EFFECT_ID, fuelUseMult, "Hyperspace drive anomaly");
-            }
-        }
-
-        // Manage CR decay and fuel consumption rate
-        if(false && pf.isInHyperspace()) {
-            for(FleetMemberAPI fm : pf.getFleetData().getMembersListCopy()) {
-                VulnerabilityLevel vuln = VulnerabilityLevel.getForShip(fm);
-                float crLossMult = stage.getCrDecayRate() * vuln.getEffectMult();
-//                StatBonus fuelUse = fm.getStats().getFuelUseMod();
-//                if(fuelUseMult > 1) {
-//                    fuelUse.modifyMult(EFFECT_ID, fuelUseMult);
-//                } else {
-//                    fuelUse.unmodify(EFFECT_ID);
-//                }
-
-                if(lyTraveled > 0 && crLossMult > 0) {
-                    RepairTrackerAPI rt = fm.getRepairTracker();
-                    float baseRate = -rt.getRecoveryRate() / Global.getSector().getClock().getSecondsPerDay();
-
-                    rt.applyCREvent(baseRate * amount * crLossMult, EFFECT_ID, "Anomalous drive field effects");
+                if (fuelUseMult != 1 && pf.isInHyperspace()) {
+                    fuelUse.modifyMult(EFFECT_ID, fuelUseMult, "Hyperspace drive anomaly");
                 }
             }
         }

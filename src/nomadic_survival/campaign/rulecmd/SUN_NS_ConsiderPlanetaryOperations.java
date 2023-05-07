@@ -50,7 +50,7 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
         if(planetIsColonized) {
             FactionAPI claimant = planet.getFaction();
 
-            if(!claimant.isPlayerFaction()) {
+            if(!claimant.isPlayerFaction() && claimant != Misc.getCommissionFaction()) {
                 boolean tOn = Global.getSector().getPlayerFleet().isTransponderOn();
                 String controlOrControls = claimant.getDisplayNameIsOrAre().equalsIgnoreCase("is")
                         ? " controls "

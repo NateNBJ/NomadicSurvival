@@ -52,9 +52,12 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
 
         for(OperationIntel op : OperationIntel.getAllUnknown()) {
             if(op.isCurrentlyAvailable()) {
+                StarSystemAPI system = op.getPlanet().getStarSystem();
                 float weight = op.getType().getOccurrenceLimit() < 5
                         ? 5 - op.getType().getOccurrenceLimit()
                         : 1;
+
+                if(system == null || system.hasTag("hidden") || system.hasTag("theme_hidden")) continue;
 
                 switch (op.getType().getOutputID()) {
                     case Commodities.FUEL: weight *= 3; break;

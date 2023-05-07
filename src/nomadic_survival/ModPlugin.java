@@ -7,7 +7,6 @@ import com.fs.starfarer.api.ModSpecAPI;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
-import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BarEventManager;
@@ -18,8 +17,6 @@ import nomadic_survival.campaign.SurveyorBarEventCreator;
 import nomadic_survival.campaign.SurveyorIntelBarEvent;
 import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.OperationIntel;
-import nomadic_survival.campaign.intel.SearchIntel;
-import nomadic_survival.campaign.intel.SearchIntelV2;
 import nomadic_survival.integration.BaseListener;
 import org.apache.log4j.Logger;
 import org.json.JSONArray;
@@ -85,10 +82,13 @@ public class ModPlugin extends BaseModPlugin {
             SHOW_OP_FILTERS = true,
             SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN = true,
             ENABLE_SKILL_REQUIREMENTS = true,
+            SHOW_EXTRA_INFO_ABOUT_PROFITABILITY = false,
+            VETERAN_MODE = false,
             MARK_NEW_OP_INTEL_AS_NEW = true;
-
     public static float SURVEYOR_BAR_EVENT_FREQUENCY_MULT = 1.0f;
-    public static int XP_PER_DATA_EARNED_FROM_TRAVEL = 100;
+    public static int
+            XP_PER_DATA_EARNED_FROM_TRAVEL = 100,
+            MAX_INTEL_ICONS_VISIBLE_AT_ONCE;
 
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
@@ -122,18 +122,19 @@ public class ModPlugin extends BaseModPlugin {
         try {
             ENABLE_ANOMALY = getBoolean("enableDriveFieldAnomaly");
             ALLOW_ANOMALY_TOGGLE = getBoolean("allowDriveFieldAnomalyToggle");
-//            SHOW_SORT_OPTIONS = getBoolean("showSortOptions");
-            //SHOW_FILTER_OPTIONS = getBoolean("showFilterOptions");
+            SHOW_SORT_OPTIONS = getBoolean("showSortOptions");
             SHOW_OP_FILTERS = getBoolean("showOperationTypeFilters");
             SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN = getBoolean("showOpsWhenRequiredSkillIsUnknown");
             MARK_NEW_OP_INTEL_AS_NEW = getBoolean("markNewOperationIntelAsNew");
             ENABLE_SKILL_REQUIREMENTS = getBoolean("enableSkillRequirements");
             SURVEYOR_BAR_EVENT_FREQUENCY_MULT = getFloat("surveyorBarEventFrequencyMult");
             XP_PER_DATA_EARNED_FROM_TRAVEL = getInt("xpPerDataEarnedFromTravel");
+            MAX_INTEL_ICONS_VISIBLE_AT_ONCE = getInt("maxIntelIconsVisibleAtOnce");
+            SHOW_EXTRA_INFO_ABOUT_PROFITABILITY = getBoolean("showExtraInfoAboutProfitability");
+            VETERAN_MODE = getBoolean("veteranMode");
 
+            Global.getSector().getCampaignUI().setMaxIntelMapIcons(MAX_INTEL_ICONS_VISIBLE_AT_ONCE);
 
-            if(settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
-            SHOW_SORT_OPTIONS = settingsCfg.getBoolean("showSortOptions");
         } catch (Exception e) {
             settingsCfg = null;
 
@@ -169,8 +170,11 @@ public class ModPlugin extends BaseModPlugin {
             if (!displayToUser) {
                 return true;
             } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
-                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
                 Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
+
+                if(exception.getMessage() != null) {
+                    Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
+                }
             } else if (Global.getSector() != null) {
                 CampaignUIAPI ui = Global.getSector().getCampaignUI();
 
@@ -409,32 +413,15 @@ public class ModPlugin extends BaseModPlugin {
 
             Global.getSector().getPersistentData().put(VERSION_KEY, version);
 
-            // Remove old version of SearchIntel
-            {
-                IntelManagerAPI im = Global.getSector().getIntelManager();
-                SearchIntel badSearchIntel = (SearchIntel) im.getFirstIntel(SearchIntel.class);
-
-                if (badSearchIntel != null) {
-                    log.info("Removing old version of SearchIntel.");
-                    im.removeIntel(badSearchIntel);
-                    im.addIntel(new SearchIntelV2(), true);
-                }
-            }
-
             log.info("Update diagnostics complete.");
             updatedToNewVersion = true;
         }
         readSettingsIfNecessary(true);
         addScripts();
 
-        // Ensure info field won't be saved even if it previously was and SearchIntel.createSmallDescription hasn't been called
-        for(IntelInfoPlugin intel : Global.getSector().getIntelManager().getIntel(SearchIntel.class)) {
-            ((SearchIntel)intel).nullifyInfoField();
-        }
-
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
                 LunaSettingsChangedListener.addToManagerIfNeeded();
-            }
+        }
     }
 
     @Override

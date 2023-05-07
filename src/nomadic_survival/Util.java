@@ -13,6 +13,7 @@ import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
 import com.fs.starfarer.campaign.CampaignPlanet;
 import nomadic_survival.campaign.intel.OperationIntel;
+import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -98,16 +99,23 @@ public class Util {
             OperationType type = guaranteedPicks.isEmpty() ? picker.pickAndRemove() : guaranteedPicks.pop();
 
             if (type != null) {
+                boolean skipDuplicateName = false;
+
                 for (OperationIntel other : retVal) {
-                    if (other.getType().getName().equals(type.getName())) continue;
+                    if (other.getType().getName().equals(type.getName())) {
+                        skipDuplicateName = true;
+                        break;
+                    }
                 }
 
-                // The new op is added to the return value when it registers itself during creation
-                OperationIntel newOp = new OperationIntel(type, planet, rand);
+                if(!skipDuplicateName) {
+                    // The new op is added to the return value when it registers itself during creation
+                    OperationIntel newOp = new OperationIntel(type, planet, rand);
 
-                if(planetIsClaimed) newOp.despoil();
+                    if(planetIsClaimed) newOp.despoil();
 
-                ++i;
+                    ++i;
+                }
             } else break;
         }
 
@@ -191,7 +199,7 @@ public class Util {
         MarketAPI market = planet.getMarket();
         FactionAPI faction = market == null ? null : market.getFaction();
 
-        return faction == null ? false : faction.isShowInIntelTab() && !market.isPlanetConditionMarketOnly();
+        return faction != null && !market.isPlanetConditionMarketOnly();
     }
     public static PlanetAPI getInteractionPlanet() {
         return getInteractionPlanet(Global.getSector().getCampaignUI().getCurrentInteractionDialog());
@@ -248,5 +256,22 @@ public class Util {
                 }
             }
         }
+    }
+    public static Vector2f getFinalDestinationLocation() {
+        Vector2f retVal = Global.getSector().getPlayerFleet().getLocationInHyperspace();
+        CampaignUIAPI ui = Global.getSector().getCampaignUI();
+        SectorEntityToken target = ui.getCurrentCourseTarget();
+        SectorEntityToken next;
+
+
+        while(target != null) {
+            retVal = target.getLocationInHyperspace();
+            next = ui.getNextStepForCourse(target);
+
+            if(target == next) break;
+            else target = next;
+        }
+
+        return retVal;
     }
 }

@@ -2,6 +2,7 @@ package nomadic_survival.campaign.intel;
 
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.CoreUITabId;
+import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
@@ -11,28 +12,14 @@ import nomadic_survival.ModPlugin;
 import nomadic_survival.OperationType;
 import nomadic_survival.Util;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.Display;
 
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.*;
 
 public class SearchIntel extends BaseIntelPlugin {
     enum ButtonID { Apply, AutoApply, FilterUnavailable, FilterType }
     enum SortType { DistFromFleet, DistFromDest, DistFromRoute, BestValue }
-    enum FilterType { SurveyNeeded, SkillNeeded, Claimed, Available }
-    enum RangeType {
-        ShortRange(5), MidRange(10), LongRange(25), UnlimitedRange(Integer.MAX_VALUE);
-
-        int maxLY;
-
-        public String getButtonString() { return maxLY == Integer.MAX_VALUE ? "No Range Limit" : maxLY + " Lightyears"; }
-        public int getMaxLY() {
-            return maxLY;
-        }
-        RangeType(int maxLY) { this.maxLY = maxLY; }
-    }
 
     public static final float CHECK_BUTTON_HEIGHT = 25;
 
@@ -42,25 +29,17 @@ public class SearchIntel extends BaseIntelPlugin {
 
     transient float width = 0;
     transient int checkButtonCount = 0;
-    TooltipMakerAPI info; // Set to null to avoid saving it. TODO remove this field or make it transient with next breaking update
+    transient TooltipMakerAPI info;
+    transient Map<CommoditySpecAPI, Set<OperationType>> knownOps = new HashMap<>();
 
-    boolean autoApply = true, filterUnavailable = true, filterByInput = false;
+    boolean filterUnavailable = true, filterByInput = false;
     SortType sortType = SortType.DistFromFleet;
-    RangeType rangeType = RangeType.UnlimitedRange;
     Set<String> selectedCommodities = new HashSet<>();
     Set<String> selectedOps = new HashSet<>();
-    Map<CommoditySpecAPI, Set<OperationType>> knownOps = new HashMap<>();
-//    Set<FilterType> selectedFilters = new HashSet<>();
+    SectorEntityToken prevMoveTarget = null;
 
     public SortType getSortType() {
         return sortType;
-    }
-    public RangeType getRangeType() {
-        return rangeType;
-    }
-
-    public void nullifyInfoField() {
-        this.info = null;
     }
     public boolean isCommoditySelected(OperationType type) {
         if(selectedCommodities.isEmpty()) return true;
@@ -77,9 +56,6 @@ public class SearchIntel extends BaseIntelPlugin {
     }
     public boolean isOpSelected(OperationType opType) {
         return selectedOps.isEmpty() || selectedOps.contains(opType.getId());
-    }
-    public boolean isAutoApplySet() {
-        return autoApply;
     }
     public boolean isFilterUnavailableSet() {
         return filterUnavailable;
@@ -115,8 +91,6 @@ public class SearchIntel extends BaseIntelPlugin {
 
         if(key instanceof SortType) {
             selected = sortType == key;
-        } else if(key instanceof RangeType) {
-            selected = rangeType == key;
         } else if(key instanceof String) {
             selected = selectedCommodities.contains(key);
         } else if(key instanceof OperationType) {
@@ -138,12 +112,13 @@ public class SearchIntel extends BaseIntelPlugin {
         return box;
     }
 
-    @Override
+    public SearchIntel() {
+        setNew(false);
+    }
+
     public String getSmallDescriptionTitle() {
         return "Search Parameters";
     }
-
-    @Override
     public void createIntelInfo(TooltipMakerAPI info, ListInfoMode mode) {
         info.addPara(getSmallDescriptionTitle(), getTitleColor(mode), 0f);
 
@@ -152,23 +127,30 @@ public class SearchIntel extends BaseIntelPlugin {
         Color tc = Misc.getGrayColor();
         float initPad = (mode == ListInfoMode.IN_DESC) ? opad : pad;
 
-        info.addPara("Filter which operations are shown", tc, initPad);
-        info.addPara("The map shows the top 100 icons", tc, pad);
-    }
+        if(mode == ListInfoMode.MESSAGES) {
+            info.addPara("Use the \"Planet Ops\" tag to search for planetary operations.", tc, initPad);
+        } else {
+            int icons = Global.getSector().getCampaignUI().getMaxIntelMapIcons();
 
-    @Override
+            info.addPara("Filter which operations are shown", tc, initPad);
+
+            if(icons < 1000) info.addPara("The map shows the top " + icons + " icons", tc, pad);
+        }
+    }
     public void createSmallDescription(TooltipMakerAPI info, float width, float height) {
         this.width = width;
         this.info = info;
         this.checkButtonCount = 0;
 
-        if (!isAutoApplySet()) {
-            info.addButton("Apply", ButtonID.Apply, width, CHECK_BUTTON_HEIGHT, 10).setEnabled(!isAutoApplySet());
-        }
+        int sitesLeftToDiscover = OperationIntel.getAllUnknown().size();
 
-        info.addAreaCheckbox("Automatically Apply Parameters", ButtonID.AutoApply, Misc.getBasePlayerColor(),
-                        Misc.getDarkPlayerColor(), Misc.getBrightPlayerColor(), width, CHECK_BUTTON_HEIGHT, 3, false)
-                .setChecked(autoApply);
+        if(sitesLeftToDiscover > 0) {
+            info.beginGridFlipped(width, 1, 40, 10);
+            info.addToGrid(0, 0, "Operation sites left to discover", "" + sitesLeftToDiscover);
+            info.addGrid(10);
+        } else {
+            info.addPara("All operation sites have been discovered!", 10);
+        }
 
         if (Global.getSettings().isDevMode()) {
             info.addAreaCheckbox("Only Show Available Operations", ButtonID.FilterUnavailable, Misc.getBasePlayerColor(),
@@ -199,14 +181,6 @@ public class SearchIntel extends BaseIntelPlugin {
             addCheckButton("Profitability", SortType.BestValue);
         }
 
-        if (ModPlugin.SHOW_FILTER_OPTIONS) {
-            info.addSectionHeading("Filter by Range", Alignment.MID, 15);
-            addCheckButton(RangeType.UnlimitedRange.getButtonString(), RangeType.UnlimitedRange);
-            addCheckButton(RangeType.ShortRange.getButtonString(), RangeType.ShortRange);
-            addCheckButton(RangeType.MidRange.getButtonString(), RangeType.MidRange);
-            addCheckButton(RangeType.LongRange.getButtonString(), RangeType.LongRange);
-        }
-
         info.addSectionHeading("Filtering by " + (filterByInput ? "Input" : "Output") + " Commodities", Alignment.MID, 15);
         info.addButton("Filter by " + (!filterByInput ? "Input" : "Output"), ButtonID.FilterType, width, CHECK_BUTTON_HEIGHT, 3);
         {
@@ -223,11 +197,18 @@ public class SearchIntel extends BaseIntelPlugin {
 
         if(ModPlugin.SHOW_OP_FILTERS) {
             boolean headingStillNeeded = true;
+            Set<String> commoditiesToUnselect = new HashSet<>();
+
             for (String id : selectedCommodities) {
                 CommoditySpecAPI spec = Global.getSector().getEconomy().getCommoditySpec(id);
                 Map<CommoditySpecAPI, Set<OperationType>> ops = filterByInput
                         ? getKnownOpsByInput()
                         : getKnownOpsByOutput();
+
+                if(!ops.containsKey(spec)) {
+                    commoditiesToUnselect.add(spec.getId());
+                    continue;
+                }
 
                 for (OperationType type : ops.get(spec)) {
                     if (ops.get(spec).size() != 1) {
@@ -242,45 +223,37 @@ public class SearchIntel extends BaseIntelPlugin {
                     }
                 }
             }
+
+            for (String id : commoditiesToUnselect) selectedCommodities.remove(id);
         }
 
         info.addSpacer(-(int)Math.floor(checkButtonCount * 0.5f + 0) * CHECK_BUTTON_HEIGHT);
-
-        // To keep it from getting saved...
-        this.info = null;
     }
-
-    @Override
     public boolean hasImportantButton() {
         return false;
     }
-
-    @Override
     public void buttonPressConfirmed(Object buttonId, IntelUIAPI ui) {
-        boolean ctrlHeld = org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
-                || org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_RCONTROL)
-                || org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
-                || org.lwjgl.input.Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+        boolean ctrlHeld = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL)
+                || Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
+                || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
 
         if(buttonId instanceof ButtonID) {
             switch ((ButtonID)buttonId) {
                 case Apply: {
                     Global.getSector().getCampaignUI().showCoreUITab(CoreUITabId.INTEL);
                 } break;
-                case AutoApply: {
-                    autoApply = !autoApply;
-                } break;
                 case FilterUnavailable: {
                     filterUnavailable = !filterUnavailable;
                 } break;
                 case FilterType: {
+                    selectedCommodities.clear();
+                    selectedOps.clear();
                     filterByInput = !filterByInput;
                 } break;
             }
         } else if(buttonId instanceof SortType) {
             sortType = (SortType) buttonId;
-        } else if(buttonId instanceof RangeType) {
-            rangeType = (RangeType) buttonId;
         } else if(buttonId instanceof String) {
             if(ctrlHeld) {
                 if (selectedCommodities.contains(buttonId)) selectedCommodities.remove(buttonId);
@@ -329,50 +302,26 @@ public class SearchIntel extends BaseIntelPlugin {
             for (String outID : selectedCommodities) {
                 CommoditySpecAPI out = Global.getSector().getEconomy().getCommoditySpec(outID);
 
-                for (OperationType type : knownOps.get(out)) {
-                    if (knownOps.get(out).size() == 1) selectedOps.add(type.getId());
+                for (OperationType type : getKnownOpsByOutput().get(out)) {
+                    if (getKnownOpsByOutput().get(out).size() == 1) selectedOps.add(type.getId());
 
                 }
             }
         }
 
-        if(isAutoApplySet()) {
-            ui.updateIntelList();
-
-            try {
-                Robot bot = new Robot();
-                Point window = new Point(Display.getX(), Display.getY());
-                Point mouse = MouseInfo.getPointerInfo().getLocation();
-
-                bot.mouseMove(window.x + 50, window.y + 80);
-                bot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                bot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-                bot.mouseMove(mouse.x, mouse.y);
-            } catch (Exception e) {
-                ModPlugin.reportCrash(e);
-            }
-        } else {
-            super.buttonPressConfirmed(buttonId, ui);
-        }
+        ui.recreateIntelUI();
     }
-
-    @Override
     public Set<String> getIntelTags(SectorMapAPI map) {
         Set<String> tags = new HashSet<>();
         tags.add(OperationIntel.TAG);
         return tags;
     }
-
     public String getSortString() {
-        return " ";
+        return " 0 ";
     }
-
-    @Override
     public String getIcon() {
         return Global.getSettings().getSpriteName("intel", "new_planet_info");
     }
-
-    @Override
     public void notifyPlayerAboutToOpenIntelScreen() {
         super.notifyPlayerAboutToOpenIntelScreen();
 
@@ -387,20 +336,23 @@ public class SearchIntel extends BaseIntelPlugin {
             knownOps.get(out).add(op.getType());
         }
     }
-
-    @Override
     protected void advanceImpl(float amount) {
-//        if(Global.getSector().getCampaignUI().isShowingMenu()) {
+//        SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
 //
-//            CampaignUIAPI ui = Global.getSector().getCampaignUI();
-//            SectorEntityToken target = Global.getSector().getUIData().getCourseTarget();
-//           // Global.getSector().getPlayerFleet().getMoveDestination()
+//        if(target != prevMoveTarget) {
+//            Global.getSector().getCampaignUI().showCoreUITab(CoreUITabId.INTEL);
 //
+//            prevMoveTarget = target;
 //        }
     }
-
-    @Override
     public boolean runWhilePaused() {
         return true;
+    }
+
+    Object readResolve() {
+        info = null;
+        knownOps = new HashMap<>();
+
+        return this;
     }
 }
