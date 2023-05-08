@@ -1,11 +1,12 @@
 {
     "masterVersionFile":"https://raw.githubusercontent.com/NateNBJ/NomadicSurvival/master/sun_ns.version",
+    "directDownloadURL":"https://github.com/NateNBJ/NomadicSurvival/releases/latest/download/Nomadic.Survival.zip",
     "modName":"Nomadic Survival",
     "modThreadId":26255,
     "modVersion":
     {
         "major":1,
-        "minor":2,
+        "minor":3,
         "patch":0,
     },
 }
