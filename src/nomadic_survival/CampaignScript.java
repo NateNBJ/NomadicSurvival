@@ -12,6 +12,7 @@ import com.fs.starfarer.api.campaign.listeners.NavigationDataSectionListener;
 import com.fs.starfarer.api.util.Misc;
 import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.SearchIntel;
+import nomadic_survival.campaign.rulecmd.SUN_NS_ConsiderPlanetaryOperations;
 import nomadic_survival.campaign.rulecmd.SUN_NS_ShowAvailablePlanetaryOperations;
 
 import static nomadic_survival.ModPlugin.reportCrash;
@@ -36,7 +37,10 @@ public class CampaignScript implements EveryFrameScript, NavigationDataSectionLi
     public void advance(float amount) {
         CampaignUIAPI ui = Global.getSector().getCampaignUI();
 
-        if(!ui.isShowingDialog()) shouldActivateFreeRefitState = false;
+        if(!ui.isShowingDialog()) {
+            shouldActivateFreeRefitState = false;
+            SUN_NS_ConsiderPlanetaryOperations.isLargePlanetSwitchNeeded = true;
+        }
 
         if(shouldActivateFreeRefitState
                 &&!inFreeRefitState

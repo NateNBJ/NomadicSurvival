@@ -16,16 +16,16 @@ public class SurveyorBarEventCreator extends BaseBarEventCreator {
 
     @Override
     public float getBarEventActiveDuration() {
-        return 5f + (float) Math.random() * 10f;
+        return (5f + (float) Math.random() * 10f) / Math.max(0.1f, ModPlugin.SURVEYOR_BAR_EVENT_FREQUENCY_MULT);
     }
 
     @Override
     public float getBarEventTimeoutDuration() {
-        return 5f + (float) Math.random() * 10f;
+        return 5f + (float) Math.random() * 10f / Math.max(0.1f, ModPlugin.SURVEYOR_BAR_EVENT_FREQUENCY_MULT);
     }
 
     @Override
     public float getBarEventAcceptedTimeoutDuration() {
-        return 5f + (float) Math.random() * 10f;
+        return 5f + (float) Math.random() * 10f / Math.max(0.1f, ModPlugin.SURVEYOR_BAR_EVENT_FREQUENCY_MULT);
     }
 }

@@ -53,6 +53,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     protected boolean despoil = false,
             drawFromColony = false,
             outputToColony = false,
+            maxBatchesPerformedLastTime = false,
             isCostPanelCreationNeeded = true;
     protected int prevSelectedBatches = 0,
             selectedBatches = 0,
@@ -355,10 +356,10 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
                 Global.getSoundPlayer().playUISound(type.getOutput().getSoundIdDrop(), 1, 1);
 
-                boolean maxBatchesSelected = selectedBatches == maxBatches;
+                maxBatchesPerformedLastTime = selectedBatches == maxBatches;
                 recalculateBatchLimit();
 
-                if(maxBatchesSelected && maxBatches > 0) {
+                if(maxBatchesPerformedLastTime && maxBatches > 0) {
                     prevSelectedBatches = selectedBatches = 0;
                     isCostPanelCreationNeeded = true;
                     options.addOption("Consider another operation", OptionId.CONSIDER);
@@ -382,6 +383,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             } break;
             case LEAVE: {
                 if(intel.isCompletelyDepleted()) intel.unregister();
+
+                SUN_NS_ConsiderPlanetaryOperations.isLargePlanetSwitchNeeded = true;
 
                 dialog.setPlugin(formerPlugin);
                 formerPlugin.init(dialog);
@@ -449,6 +452,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     }
     protected boolean shouldDefaultToMax() {
         return intel.isColonyStorageAvailable()
+                || maxBatchesPerformedLastTime
                 || intel.getCostMultiplier(intel.isAbundanceAvailable()) <= 0
                 || !type.isAnySurvivalCommodityUsedAsInput();
     }

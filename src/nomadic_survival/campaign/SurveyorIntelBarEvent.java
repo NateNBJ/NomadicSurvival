@@ -30,25 +30,8 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
     OperationIntel intel;
     List<OperationIntel> bonusIntel = new ArrayList<>();
 
-    public boolean shouldShowAtMarket(MarketAPI market) {
-        return !FACTION_BLACKLIST.contains(market.getFactionId())
-                && !OperationIntel.getAllUnknown().isEmpty();
-    }
-
-    @Override
-    public boolean shouldRemoveEvent() {
-        return Global.getSector().getIntelManager().hasIntel(intel);
-    }
-
-    @Override
-    protected void regen(MarketAPI market) {
-        if (this.market == market) return;
-
-        random = new Random();
-        cost = 500 + 500 * random.nextInt(4);
-
+    WeightedRandomPicker<OperationIntel> createOpPicker() {
         WeightedRandomPicker<OperationIntel> picker = new WeightedRandomPicker(random);
-        int bonusCount = 3 + random.nextInt(3);
 
         for(OperationIntel op : OperationIntel.getAllUnknown()) {
             if(op.isCurrentlyAvailable()) {
@@ -72,6 +55,29 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
                 picker.add(op, weight);
             }
         }
+
+        return picker;
+    }
+
+    public boolean shouldShowAtMarket(MarketAPI market) {
+        return !FACTION_BLACKLIST.contains(market.getFactionId())
+                && !createOpPicker().isEmpty();
+    }
+
+    @Override
+    public boolean shouldRemoveEvent() {
+        return Global.getSector().getIntelManager().hasIntel(intel);
+    }
+
+    @Override
+    protected void regen(MarketAPI market) {
+        if (this.market == market) return;
+
+        random = new Random();
+        cost = 500 + 500 * random.nextInt(4);
+
+        WeightedRandomPicker<OperationIntel> picker = createOpPicker();
+        int bonusCount = 3 + random.nextInt(3);
 
         intel = picker.pick();
 
@@ -118,7 +124,7 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
 
         CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
         int credits = (int) cargo.getCredits().get();
-        String worldDesc = intel.getPlanet().getTypeNameWithWorldLowerCase();
+        String worldDesc = intel == null ? null : intel.getPlanet().getTypeNameWithWorldLowerCase();
         Color h = Misc.getHighlightColor();
         Color n = Misc.getNegativeHighlightColor();
 
@@ -131,7 +137,9 @@ public class SurveyorIntelBarEvent extends BaseBarEventWithPerson {
                         " is careful to leave out details concerning the planet's location and suitability for " +
                         "colonization.", h, intel.getType().getOutput().getLowerCaseName());
 
-                options.addOption("Ask where the planet can be found", OptionId.ASK);
+                if(intel != null) options.addOption("Ask where the planet can be found", OptionId.ASK);
+                else text.addPara("After a while you realize that the planet is one you already know about.");
+
                 options.addOption("Thank " + getHimOrHer() + " for the conversation and leave", OptionId.LEAVE);
             } break;
             case ASK: {

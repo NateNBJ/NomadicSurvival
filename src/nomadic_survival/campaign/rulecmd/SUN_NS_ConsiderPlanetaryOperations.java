@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
+    public static boolean isLargePlanetSwitchNeeded = true;
+
     @Override
     public boolean execute(String ruleId, InteractionDialogAPI dialog, List<Misc.Token> params, Map<String, MemoryAPI> memoryMap) {
         TextPanelAPI text = dialog.getTextPanel();
@@ -21,6 +23,11 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
         List<OperationIntel> operations = Util.getOperationsAvailableAtPlanet(planet, true);
         boolean planetIsColonized = planet != null && planet.getMarket() != null && planet.getMarket().isInEconomy();
         int count = 0;
+
+        if(planet != null && isLargePlanetSwitchNeeded) {
+            dialog.getVisualPanel().showLargePlanet(planet);
+            isLargePlanetSwitchNeeded = false;
+        }
 
         options.clearOptions();
 
@@ -32,11 +39,13 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
                 options.addOption(op.getType().getName(), optionID);
 
                 if(op.isFirstTimeVisitRewardAvailable()) {
-                    if (op.getType().getOccurrenceLimit() == 1) {
-                        dialog.setOptionColor(optionID, Misc.getStoryOptionColor());
-                    } else if (op.getType().getFirstVisitData() > 0) {
-                        dialog.setOptionColor(optionID, Util.getAnomalyDataColor());
-                    }
+                    dialog.setOptionColor(optionID, Misc.getHighlightColor());
+
+//                    if (op.getType().getOccurrenceLimit() == 1) {
+//                        dialog.setOptionColor(optionID, Misc.getStoryOptionColor());
+//                    } else if (op.getType().getFirstVisitData() > 0) {
+//                        dialog.setOptionColor(optionID, Util.getAnomalyDataColor());
+//                    }
                 } else if(!op.isRequiredSkillKnown()) {
                     String hlStr = op.getRequiredSkill().getName().toLowerCase();
 

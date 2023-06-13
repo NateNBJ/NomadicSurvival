@@ -38,17 +38,20 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
         boolean hasFirstTimeData = false, hasFirstTimeSP = false;
 
         for(OperationIntel op : operations) {
-            if(op.isNotYetVisited()) {
-                if(op.getType().getFirstVisitData() > 0) hasFirstTimeData = true;
-                if(op.getType().getOccurrenceLimit() == 1) hasFirstTimeSP = true;
+            if(op.isFirstTimeVisitRewardAvailable()) {
+                dialog.setOptionColor(OPTION_ID, Misc.getHighlightColor());
             }
+//            if(op.isNotYetVisited()) {
+//                if(op.getType().getFirstVisitData() > 0) hasFirstTimeData = true;
+//                if(op.getType().getOccurrenceLimit() == 1) hasFirstTimeSP = true;
+//            }
         }
 
-        if(hasFirstTimeSP) {
-            dialog.setOptionColor(OPTION_ID, Misc.getStoryOptionColor());
-        } else if(hasFirstTimeData) {
-            dialog.setOptionColor(OPTION_ID, Util.getAnomalyDataColor());
-        }
+//        if(hasFirstTimeSP) {
+//            dialog.setOptionColor(OPTION_ID, Misc.getStoryOptionColor());
+//        } else if(hasFirstTimeData) {
+//            dialog.setOptionColor(OPTION_ID, Util.getAnomalyDataColor());
+//        }
 
         if(!isPlanetOpsAlreadyListed()) {
             if (planet == null) {
