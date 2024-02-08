@@ -17,7 +17,7 @@ public class SUN_NS_PlanetHasRefitOperation extends BaseCommandPlugin {
         PlanetAPI planet = Util.getInteractionPlanet(dialog);
         List<OperationIntel> operations = Util.getOperationsAvailableAtPlanet(planet, true);
 
-        if (planet == null) {
+        if (planet == null || operations == null) {
             return false;
         }
 

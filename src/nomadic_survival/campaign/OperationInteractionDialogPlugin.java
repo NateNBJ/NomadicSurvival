@@ -7,9 +7,12 @@ import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.SubmarketAPI;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.impl.PlayerFleetPersonnelTracker;
+import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets;
 import com.fs.starfarer.api.impl.campaign.rulecmd.AddRemoveCommodity;
 import com.fs.starfarer.api.ui.Alignment;
+import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.ui.ValueDisplayMode;
 import com.fs.starfarer.api.util.Misc;
 import nomadic_survival.ModPlugin;
@@ -39,7 +42,8 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         BACK,
         LEAVE,
     }
-    protected static final String SELECTOR_ID = "sun_ns_selector";
+    public static final String SELECTOR_ID = "sun_ns_selector";
+    public static final String TOOLTIP_NEEDS_SHOWN_KEY = "sun_ns_tooltipHasNotBeenShown";
 
     protected InteractionDialogAPI dialog;
     protected TextPanelAPI text;
@@ -62,6 +66,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
             maxBatchesPlayerCanAfford,
             maxBatchesPlayerCanStore,
             maxBatches = 0;
+    protected float crewPerBatch = 0, cargoPerBatch = 0, fuelPerBatch = 0;
     protected ResourceCostPanelAPI costPanel;
     protected String outputName;
     protected OptionId stage = null;
@@ -88,6 +93,14 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     protected void removeCommodity(CargoAPI cargo, String commodityId, int amountLost) {
         cargo.removeCommodity(commodityId, amountLost);
         AddRemoveCommodity.addCommodityLossText(commodityId, amountLost, text);
+
+        if(commodityId.equals(Commodities.MARINES) && cargo.equals(playerFleet.getCargo())) {
+            PlayerFleetPersonnelTracker personnel = PlayerFleetPersonnelTracker.getInstance();
+
+            personnel.update();
+
+            if(personnel.getMarineData().num > 0) personnel.getMarineData().addXP(amountLost * 2);
+        }
     }
     protected float getAvailableCommodityAmount(CargoAPI cargo, String commodity) {
         return cargo.getCommodityQuantity(commodity);
@@ -154,21 +167,25 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                     prevSelectedBatches = selectedBatches;
 
                     if (isCostPanelCreationNeeded && !(intel.getType().isAbundanceRequired() && intel.isNonRenewableAbundanceDepleted())) {
-                        if (intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown() && !drawFromColony) {
-                            float min = playerFleet.getFleetData().getMinCrew();
-                            float curr = playerFleet.getCargo().getCrew();
+                        float minCrew = playerFleet.getFleetData().getMinCrew();
+                        float currCrew = playerFleet.getCargo().getCrew();
 
-                            if(min == 0) {
-                                // Show no warning in cases where the fleet is fully automated
-                            } if (curr >= min) {
+                        if(minCrew == 0) {
+                            // Show no warning in cases where the fleet is fully automated
+                        } else if(intel.isCrewAnInput(useAbundance) && intel.isRequiredSkillKnown() && !drawFromColony) {
+                            if (currCrew >= minCrew) {
                                 text.addPara("Your " + Util.getShipOrFleet() + " will suffer degraded performance if " +
                                                 "more than %s crew are lost.",
-                                        Misc.getHighlightColor(), (int) (curr - min + 1) + "");
+                                        Misc.getHighlightColor(), (int)(currCrew - minCrew + 1) + "");
                             } else {
                                 text.addPara("Your " + Util.getShipOrFleet() + " is already suffering degraded " +
                                         "performance due to insufficient crew.", Misc.getNegativeHighlightColor());
                             }
+                        } else if(intel.getType().getOutputID().equals(Commodities.CREW) && currCrew < minCrew) {
+                            text.addPara("Your " + Util.getShipOrFleet() + " needs %s more crew to avoid degraded " +
+                                            "performance.", Misc.getHighlightColor(), (int)(minCrew - currCrew) + "");
                         }
+
                         costPanel = text.addCostPanel("Projected outcome:", COST_HEIGHT, Misc.getBasePlayerColor(),
                                 Misc.getDarkPlayerColor());
                         costPanel.setNumberOnlyMode(true);
@@ -246,12 +263,12 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
                 if(nopeReason == null) {
                     options.addOption("Decide not to " + type.getShortName().toLowerCase() + " at this time", OptionId.BACK, null);
-                    updateExchangeValueTooltip();
                 } else {
                     options.setEnabled(OptionId.CONFIRM, false);
-                    options.setTooltip(OptionId.CONFIRM, nopeReason);
                     options.addOption("Back", OptionId.BACK, null);
                 }
+
+                updateExchangeValueTooltip(nopeReason);
 
                 options.setShortcut(OptionId.BACK, Keyboard.KEY_ESCAPE, false, false, false, true);
 
@@ -408,28 +425,70 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
         updateExchangeDisplay(-batchesDisplayedAtLastUpdate);
         prevSelectedBatches = 0;
     }
-    protected void updateExchangeValueTooltip() {
-        if(selectedBatches > 0) {
-            int in = intel.getInputValuePerBatch(useAbundance) * selectedBatches;
-            int out = type.getOutputValuePerBatch() * selectedBatches;
-            String val = Misc.getDGSCredits(out - in) + " (" + intel.getProfitabilityString(useAbundance).replace("%", "%%") + ")";
-            String msg = String.format("%s - %s = " + val, out, in) + "\n\nAfter the operation you will have:";
-            float have = getCargo(false).getCommodityQuantity(intel.getType().getOutputID());
-            float remaining = have + intel.getType().getOutputCountPerBatch() * selectedBatches;
-            msg += "\n    " + (int)remaining + "  " + intel.getType().getOutput().getLowerCaseName();
+    protected void updateExchangeValueTooltip(final String nopeReason) {
+        if(Global.getSector().getPersistentData().containsKey(TOOLTIP_NEEDS_SHOWN_KEY)
+                && !ModPlugin.VETERAN_MODE
+                && nopeReason == null
+                && selectedBatches > 0) {
 
-            for(OperationIntel.Input input : intel.getInputs()) {
-                have = getCargo(false).getCommodityQuantity(input.getCommodityID());
-                remaining = have - input.getCountPerBatch(useAbundance) * selectedBatches;
-                msg += "\n    " + (int)remaining + "  " + input.getCommodity().getLowerCaseName();
-            }
-
-            options.setTooltip(OptionId.CONFIRM, "Base exchange value:\n" + msg);
-            options.setTooltipHighlightColors(OptionId.CONFIRM, out - in > 0
-                    ? Misc.getPositiveHighlightColor()
-                    : Misc.getNegativeHighlightColor());
-            options.setTooltipHighlights(OptionId.CONFIRM, val);
+            options.setOptionText("Begin the operation  (mouse-over for details)", OptionId.CONFIRM);
         }
+
+        options.addOptionTooltipAppender(OptionId.CONFIRM, new OptionPanelAPI.OptionTooltipCreator() {
+            public void createTooltip(TooltipMakerAPI tooltip, boolean hadOtherText) {
+                int in = intel.getInputValuePerBatch(useAbundance) * selectedBatches;
+                int out = type.getOutputValuePerBatch() * selectedBatches;
+                Color tc = Misc.getTextColor();
+                Color hl = Misc.getHighlightColor();
+                Color diffHl = (out - in > 0) ? Misc.getPositiveHighlightColor() : Misc.getNegativeHighlightColor();
+                float have = getCargo(false).getCommodityQuantity(intel.getType().getOutputID());
+                float remaining = have + intel.getType().getOutputCountPerBatch() * selectedBatches;
+                CargoAPI tmp = Global.getFactory().createCargo(false);
+
+                if(nopeReason != null) {
+                    tooltip.addPara(nopeReason, Misc.getNegativeHighlightColor(), 0);
+                } else {
+                    String msg = "Base exchange value:\n" + String.format("%s - %s = ", out, in)
+                            + Misc.getDGSCredits(out - in) + " (%s)";
+                    tooltip.addPara(msg, 0, tc, out == in ? tc : diffHl, intel.getProfitabilityString(useAbundance));
+                }
+
+//                    tooltip.setTextWidthOverride(329f);
+
+                tooltip.addPara(selectedBatches <= 0 ? "You currently have:" : "After the operation you will have:", 10);
+                tmp.addCommodity(intel.getType().getOutputID(), remaining);
+                for(OperationIntel.Input input : intel.getInputs()) {
+                    have = getCargo(false).getCommodityQuantity(input.getCommodityID());
+                    remaining = have - input.getCountPerBatch(useAbundance) * selectedBatches;
+                    tmp.addCommodity(input.getCommodityID(), remaining);
+                }
+                tooltip.showCargo(tmp, 500, false, 0);
+
+                if(!outputToColony) {
+                    CargoAPI outputCargo = getCargo(true);
+                    int space = 0;
+                    String type = null;
+                    CommoditySpecAPI output = intel.getType().getOutput();
+
+                    if(output.isFuel()) {
+                        space = (int)(outputCargo.getFreeFuelSpace() - fuelPerBatch * selectedBatches);
+                        type = "fuel storage space";
+                    } else if(output.isPersonnel()) {
+                        space = (int)(outputCargo.getFreeCrewSpace() - crewPerBatch * selectedBatches);
+                        type = "personnel quarters";
+                    } else {
+                        space = (int)(outputCargo.getSpaceLeft() - cargoPerBatch * selectedBatches);
+                        type = "cargo storage space";
+                    }
+
+                    if(type != null){
+                        if(space >= 0) tooltip.addPara("Remaining " + type + ": %s", 10, tc, hl, space + "");
+                        else tooltip.addPara("Insufficient " + type, Misc.getNegativeHighlightColor(), 10);
+                    }
+                }
+                Global.getSector().getPersistentData().remove(TOOLTIP_NEEDS_SHOWN_KEY);
+            }
+        });
     }
     protected void updateExchangeDisplay(int batches) {
         if(batches == 0) batches = 1;
@@ -448,7 +507,7 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
 
         batchesDisplayedAtLastUpdate += batches;
 
-        updateExchangeValueTooltip();
+        updateExchangeValueTooltip(null);
     }
     protected boolean shouldDefaultToMax() {
         return intel.isColonyStorageAvailable()
@@ -472,10 +531,10 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
     }
     protected void recalculateBatchLimit() {
         maxCapacityReduction = 0;
-        float crewPerBatch = 0, cargoPerBatch = 0, fuelPerBatch = 0;
         CommoditySpecAPI out = type.getOutput();
         CargoAPI inputCargo = getCargo(false);
 
+        crewPerBatch = cargoPerBatch = fuelPerBatch = 0;
         maxBatches = 50; // Triple digits can cause display issues, and 99 results in some values being impossible to select
         maxBatchesPlayerCanAfford = maxBatches;
         maxBatchesPlayerCanStore = maxBatches;

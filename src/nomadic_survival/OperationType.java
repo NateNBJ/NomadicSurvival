@@ -179,7 +179,9 @@ public class OperationType {
         Global.getSector().getPersistentData().put(id, current + 1);
     }
     public int getOutputCountPerBatch() {
-        return outputCount;
+        return ModPlugin.FUEL_PRICE_MULT != 1f && getOutput().isFuel()
+                ? (int)(outputCount / ModPlugin.FUEL_PRICE_MULT)
+                : outputCount;
     }
     public boolean isRisky() { return tags.contains(Tags.RISKY); }
     public Set<String> getTags() {

@@ -251,7 +251,7 @@ public class OperationIntel extends BaseIntelPlugin {
     }
     public String getProfitabilityString(boolean withAbundance) {
         int profit = (int)(getProfitability(withAbundance) * 100f);
-        return profit == Integer.MAX_VALUE ? "High" : profit + "%";
+        return profit == Integer.MAX_VALUE ? "High" : (profit > 0 ? "+" : "") + profit + "%";
     }
     public int getCurrentAbundance() {
         float monthsSinceLastVisit = Global.getSector().getClock().getElapsedDaysSince(timestampOfLastVisit) / 30f;
@@ -718,7 +718,7 @@ public class OperationIntel extends BaseIntelPlugin {
 
             if(!getType().isRefitOp()) {
                 int profit = (int)(getProfitability(true) * 100f);
-                String profitStr = profit == Integer.MAX_VALUE ? "High" : profit + "%";
+                String profitStr = profit == Integer.MAX_VALUE ? "High" : (profit > 0 ? "+" : "") + profit + "%";
 
                 if (profit == 0) clr = Misc.getGrayColor();
                 else if (profit < 0) clr = Misc.getNegativeHighlightColor();

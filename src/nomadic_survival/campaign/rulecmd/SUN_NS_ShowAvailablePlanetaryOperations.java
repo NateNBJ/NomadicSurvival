@@ -37,6 +37,8 @@ public class SUN_NS_ShowAvailablePlanetaryOperations extends BaseCommandPlugin {
         List<OperationIntel> operations = Util.getOperationsAvailableAtPlanet(planet, true);
         boolean hasFirstTimeData = false, hasFirstTimeSP = false;
 
+        if(operations == null) return false;
+
         for(OperationIntel op : operations) {
             if(op.isFirstTimeVisitRewardAvailable()) {
                 dialog.setOptionColor(OPTION_ID, Misc.getHighlightColor());

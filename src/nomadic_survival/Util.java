@@ -1,13 +1,18 @@
 package nomadic_survival;
 
+import com.fs.starfarer.api.EveryFrameScript;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.*;
+import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
+import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.Industry;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
 import com.fs.starfarer.api.impl.campaign.ids.Industries;
 import com.fs.starfarer.api.impl.campaign.ids.MemFlags;
+import com.fs.starfarer.api.impl.campaign.ids.Tags;
+import com.fs.starfarer.api.impl.campaign.intel.GenericMissionManager;
 import com.fs.starfarer.api.impl.campaign.procgen.ConditionGenDataSpec;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
@@ -16,10 +21,8 @@ import nomadic_survival.campaign.intel.OperationIntel;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
-import java.util.Stack;
+import java.util.*;
 
 import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
@@ -121,10 +124,16 @@ public class Util {
 
         return retVal;
     }
+    public static boolean isValidOpPlanet(PlanetAPI planet) {
+        return planet != null
+                && planet.getMarket() != null
+                && !planet.hasTag(Tags.NOT_RANDOM_MISSION_TARGET)
+                && !Misc.isInAbyss(planet.getLocationInHyperspace());
+    }
     public static void maybeAddOpToPlanet(PlanetAPI planet, String opID) {
         List<OperationIntel> retVal;
 
-        if(planet == null || planet.getMarket() == null) {
+        if(!isValidOpPlanet(planet)) {
             retVal = null;
         } else if(Util.isPlanetColonizedByNPC(planet)) {
             // Prevent ops from spawning at planets owned by NPC factions
@@ -142,7 +151,7 @@ public class Util {
     public static List<OperationIntel> getOperationsAvailableAtPlanet(PlanetAPI planet, boolean addIntel) {
         List<OperationIntel> retVal;
 
-        if(planet == null || planet.getMarket() == null) {
+        if(!isValidOpPlanet(planet)) {
             retVal = null;
         } else if(OperationIntel.existsForPlanet(planet)) {
             retVal = OperationIntel.getAllForPlanet(planet);
@@ -250,8 +259,12 @@ public class Util {
                 final PlanetAPI planet = market == null ? null : market.getPlanetEntity();
 
                 if (market != null && planet != null && market.getSurveyLevel() == MarketAPI.SurveyLevel.FULL) {
-                    for(OperationIntel intel : Util.getOperationsAvailableAtPlanet(planet, true)) {
-                        intel.setNew(false);
+                    List<OperationIntel> ops = Util.getOperationsAvailableAtPlanet(planet, true);
+
+                    if(ops != null) {
+                        for(OperationIntel intel : ops) {
+                            intel.setNew(false);
+                        }
                     }
                 }
             }
@@ -273,5 +286,78 @@ public class Util {
         }
 
         return retVal;
+    }
+    public static boolean isPossibleForAnyMapToBeSeen() {
+        CoreUITabId tab = Global.getSector().getCampaignUI().getCurrentCoreTab();
+        boolean isInDialog = Global.getSector().getCampaignUI().getCurrentInteractionDialog() != null;
+
+        return tab == CoreUITabId.INTEL || tab == CoreUITabId.MAP || isInDialog;
+    }
+    public static void removeIntelOfSpecificClass(Class type) {
+        GenericMissionManager gm = GenericMissionManager.getInstance();
+        IntelManagerAPI im = Global.getSector().getIntelManager();
+        List<IntelInfoPlugin> toDequeue = new ArrayList();
+
+        for(IntelInfoPlugin intel : im.getIntel(type)) {
+            // getIntel will return NS_ classes as well, so the conditional is necessary
+            if(intel.getClass().isAssignableFrom(type)) {
+                im.removeIntel(intel);
+            }
+        }
+
+        for(IntelInfoPlugin intel : im.getCommQueue(type)) {
+            if(intel.getClass().isAssignableFrom(type)) {
+                toDequeue.add(intel);
+            }
+        }
+
+        for(IntelInfoPlugin o : toDequeue) im.unqueueIntel(o);
+
+        Iterator<EveryFrameScript> scriptIter = gm.getActive().iterator();
+        while (scriptIter.hasNext()) {
+            EveryFrameScript script = scriptIter.next();
+
+            if(script.getClass().isAssignableFrom(type)){
+                scriptIter.remove();
+            }
+        }
+    }
+    public static int getMissionPayForTravelTo(SectorEntityToken entity) {
+        int vanillaDistanceBonus = (int) Misc.getDistance(new Vector2f(), entity.getLocationInHyperspace());
+        int modDistanceBonus = Math.max(0, vanillaDistanceBonus - 10000);
+        modDistanceBonus /= Global.getSettings().getUnitsPerLightYear();
+        modDistanceBonus *= ModPlugin.ADDITIONAL_MISSION_PAY_PER_LY_FROM_CORE_WORLDS;
+
+        return  20000 + ((vanillaDistanceBonus + modDistanceBonus) / 10000) * 10000;
+    }
+    public static boolean isCargoSameExcludingCrew(CargoAPI a, CargoAPI b) {
+        CargoAPI one = Global.getFactory().createCargo(true);
+        one.addAll(a);
+        one.removeCrew(one.getCrew());
+        one.sort();
+
+        CargoAPI two = Global.getFactory().createCargo(true);
+        two.addAll(b);
+        two.removeCrew(two.getCrew());
+        two.sort();
+
+
+        if (one.getStacksCopy().size() != two.getStacksCopy().size()) return false;
+
+        List<CargoStackAPI> stacks1 = one.getStacksCopy();
+        List<CargoStackAPI> stacks2 = two.getStacksCopy();
+        for (int i = 0; i < stacks1.size(); i++) {
+            CargoStackAPI s1 = stacks1.get(i);
+            CargoStackAPI s2 = stacks2.get(i);
+
+            if ((s1 == null || s2 == null) && s1 != s2) return false;
+            if (s1.getSize() != s2.getSize()) return false;
+            if (s1.getType() != s2.getType()) return false;
+            if ((s1.getData() == null || s2.getData() == null) && s1.getData() != s2.getData()) return false;
+            if (!s1.getData().equals(s2.getData())) return false;
+        }
+
+
+        return true;
     }
 }

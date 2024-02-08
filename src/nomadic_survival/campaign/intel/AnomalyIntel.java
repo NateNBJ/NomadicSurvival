@@ -8,8 +8,11 @@ import com.fs.starfarer.api.combat.MutableStat;
 import com.fs.starfarer.api.combat.ShipHullSpecAPI;
 import com.fs.starfarer.api.combat.StatBonus;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.impl.campaign.abilities.EmergencyBurnAbility;
+import com.fs.starfarer.api.impl.campaign.abilities.GenerateSlipsurgeAbility;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.HullMods;
+import com.fs.starfarer.api.impl.campaign.ids.Items;
 import com.fs.starfarer.api.impl.campaign.ids.Tags;
 import com.fs.starfarer.api.impl.campaign.intel.BaseIntelPlugin;
 import com.fs.starfarer.api.ui.*;
@@ -78,12 +81,16 @@ public class AnomalyIntel extends BaseIntelPlugin {
             ShipHullSpecAPI spec = fm.getHullSpec();
             float travelRange = spec.getFuelPerLY() <= 0 ? Float.MAX_VALUE : spec.getFuel() / spec.getFuelPerLY();
 
-            if(fm.getFuelCapacity() == 0) {
+            if(fm.getFuelCapacity() == 0 || spec.hasTag("sun_ns_protected")) {
                 return Protected;
+            } else if(spec.hasTag("sun_ns_militarized")) {
+                return Militarized;
+            } else if(spec.hasTag("sun_ns_vulnerable")) {
+                return Vulnerable;
             } else if(fm.getVariant().hasHullMod(HullMods.CIVGRADE)) {
                 return fm.getVariant().hasHullMod(HullMods.MILITARIZED_SUBSYSTEMS) ? Militarized : Vulnerable;
             } else {
-                return travelRange > MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS ? Militarized : Protected;
+                return travelRange > ModPlugin.MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS ? Militarized : Protected;
             }
         }
 
@@ -105,7 +112,6 @@ public class AnomalyIntel extends BaseIntelPlugin {
     enum TabID { Report, Stage, Fuel, CR, Data }
     enum ButtonID { Toggle, AdvanceStage, ConvertFuel }
 
-    public static final float MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS = 100;
     public static final float CHECK_BUTTON_HEIGHT = 25;
     public static final String EFFECT_ID = "sun_ns_anomaly_effect";
     public static CommoditySpecAPI getDataCommoditySpec() {
@@ -126,6 +132,11 @@ public class AnomalyIntel extends BaseIntelPlugin {
     CampaignFleetAPI pf;
     transient ButtonAPI convertCheckbox = null;
 
+    public boolean isDriveFieldStable() {
+        return stage.ordinal() <= Stage.Inert.ordinal();
+    }
+    public boolean isConvertingExcessFuel() { return convertingExcessFuel; }
+    public boolean isAnomalyDisallowed() { return disallowed; }
     public Stage getStage() { return stage; }
     public Stage getNextStage() {
         return stage.getNext();
@@ -251,11 +262,17 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
         return retVal;
     }
-    public void adjustFuelConsumptionForSystemTooltip(float lyToSystem) {
-        MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
-        fuelUse.unmodify(EFFECT_ID);
-        float vanillaUse = pf.getLogistics().getFuelCostPerLightYear();
-        float vanillaNeededFuel = vanillaUse * lyToSystem;
+    public float getUnmodifiedFuelUseMult() {
+        MutableStat.StatMod anomalyConsumptionStat = pf.getStats().getFuelUseHyperMult().getMultStatMod(EFFECT_ID);
+        float anomalyConsumptionMult = anomalyConsumptionStat == null ? 0 : anomalyConsumptionStat.getValue();
+
+        return pf.getLogistics().getFuelCostPerLightYear() / (anomalyConsumptionMult == 0 ? 1 : anomalyConsumptionMult);
+    }
+    public float getFuelConsumedToTravel(float distanceInLY) {
+        if(!ModPlugin.ENABLE_ANOMALY || disallowed) return distanceInLY * pf.getLogistics().getFuelCostPerLightYear();
+
+        float vanillaUse = getUnmodifiedFuelUseMult();
+        float vanillaNeededFuel = vanillaUse * distanceInLY;
         float modNeededFuel = 0;
 
         float simFuel = pf.getCargo().getFuel();
@@ -266,7 +283,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         for (int i = 0; i < 100; ++i) {
             Stage next = simStage.getNext();
             float simTravel = Float.MAX_VALUE;
-            VulnerabilityLevel simVL = simFuel <= 0 ? VulnerabilityLevel.Vulnerable : getFuelVulnerability(simFuel);
+            VulnerabilityLevel simVL = simFuel <= 0 ? VulnerabilityLevel.Protected : getFuelVulnerability(simFuel);
             float simFuelUseMult = 1 + 0.01f * simStage.getFuelConsumptionPercentIncrease(simVL);
             float vlFuel = simFuel <= 0 ? Float.MAX_VALUE : getAmountOfMostVulnerableFuel(simFuel);
             float distToNextStage = next != null ? next.getLyToReach() - simTraveledTotal : simTravel;
@@ -280,8 +297,8 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 simStage = next;
             }
 
-            if(simTravelProgress + simTravel >= lyToSystem) {
-                modNeededFuel += (lyToSystem - simTravelProgress) * vanillaUse * simFuelUseMult;
+            if(simTravelProgress + simTravel >= distanceInLY) {
+                modNeededFuel += (distanceInLY - simTravelProgress) * vanillaUse * simFuelUseMult;
                 break;
             }
 
@@ -291,12 +308,24 @@ public class AnomalyIntel extends BaseIntelPlugin {
             modNeededFuel += simTravel * vanillaUse * simFuelUseMult;
         }
 
+        return modNeededFuel;
+    }
+    public void adjustFuelConsumptionForSystemTooltip(float lyToSystem) {
+        if(disallowed || lyToSystem <= 0) return;
+
+        float vanillaUse = getUnmodifiedFuelUseMult();
+        float vanillaNeededFuel = vanillaUse * lyToSystem;
 
         if(vanillaNeededFuel > 0) {
+            float modNeededFuel = getFuelConsumedToTravel(lyToSystem);
+            MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
+
             fuelUse.modifyMult(EFFECT_ID, modNeededFuel / vanillaNeededFuel);
         }
     }
     public void adjustFuelConsumptionForFuelRangeIndicator() {
+        if(disallowed) return;
+
         MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
         float vanillaUse = pf.getLogistics().getFuelCostPerLightYear();
         float vanillaRange = pf.getCargo().getFuel() / vanillaUse;
@@ -332,12 +361,74 @@ public class AnomalyIntel extends BaseIntelPlugin {
             fuelUse.modifyMult(EFFECT_ID, vanillaRange / modRange);
         }
     }
+    public void applyFuelConsumptionMult() {
+        float fuelUseMult = getFuelConsumptionMult();
+        MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
 
-    void resetStage() {
+        fuelUse.unmodify(EFFECT_ID);
+        GenerateSlipsurgeAbility.FUEL_COST_MULT = ModPlugin.ORIGINAL_SLIPSURGE_FUEL_COST_MULT;
+        EmergencyBurnAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_EBURN_FUEL_COST_MULT / ModPlugin.FUEL_CONSUMPTION_MULT;
+// TODO        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
+
+
+        if (Util.isPossibleForAnyMapToBeSeen()) {
+            // Adjust fuel usage so the fuel range circles account for the anomaly
+
+            adjustFuelConsumptionForFuelRangeIndicator();
+        } else {
+            Global.getSector().getCampaignUI().setSuppressFuelRangeRenderingOneFrame(true);
+
+            if (fuelUseMult != 1 && pf.isInHyperspace()) {
+                fuelUse.modifyMult(EFFECT_ID, fuelUseMult, "Hyperspace drive anomaly");
+
+                // Counteract the effects of the multiplier on the slipsurge ability
+                GenerateSlipsurgeAbility.FUEL_COST_MULT /= fuelUseMult;
+                EmergencyBurnAbility.FUEL_USE_MULT /= fuelUseMult;
+// TODO                FractureJumpAbility.FUEL_USE_MULT /= fuelUseMult;
+            }
+        }
+    }
+    public void convertExcessFuelIfNeeded(boolean isAbandonedFuel) {
+        boolean enabled = ModPlugin.isDoneReadingSettings() && ModPlugin.ENABLE_ANOMALY;
+
+        if(convertingExcessFuel && enabled) {
+            CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+            float diff = cargo.getFuel() - cargo.getMaxFuel();
+
+            if(diff > 0) {
+                float data = diff / getFuelBurnedToEarnOneData();
+                int wholeData = (int)Math.floor(data);
+                dataProgress += data - wholeData;
+
+                cargo.removeFuel(diff);
+                cargo.addCommodity(ModPlugin.DATA_COMMODITY_ID, wholeData);
+
+                if(wholeData >= 1) {
+                    CampaignUIAPI ui = Global.getSector().getCampaignUI();
+
+//                    ui.getMessageDisplay().addMessage(
+//                            "Excess fuel converted into " + data + " data.", data + "", Util.getAnomalyDataColor());
+
+                    ui.addMessage("%s units of " + (isAbandonedFuel ? "abandoned" : "excess") + " fuel converted into %s data",
+                            Misc.getBasePlayerColor(), (int)diff + "", wholeData + "", Misc.getHighlightColor(),
+                            Util.getAnomalyDataColor());
+
+                    CommoditySpecAPI dataSpec = Global.getSector().getEconomy().getCommoditySpec(ModPlugin.DATA_COMMODITY_ID);
+                    Global.getSoundPlayer().playUISound(dataSpec.getSoundIdDrop(), 1, 1);
+                }
+            }
+        }
+    }
+    public void resetStage() {
+        dataEarnedFromTravelThisTrip = 0;
         stage = Stage.Inert;
         lyTraveled = 0;
         pf.getStats().getFuelUseHyperMult().unmodify(EFFECT_ID);
+        GenerateSlipsurgeAbility.FUEL_COST_MULT = ModPlugin.ORIGINAL_SLIPSURGE_FUEL_COST_MULT;
+        EmergencyBurnAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_EBURN_FUEL_COST_MULT / ModPlugin.FUEL_CONSUMPTION_MULT;
+// TODO        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
     }
+
     void updateLastFrameInfo() {
         locLastFrame = pf.isInHyperspace() ? new Vector2f(pf.getLocationInHyperspace()) : null;
         fuelLastFrame = pf.getCargo().getFuel();
@@ -407,6 +498,14 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
         info.addPara("Stage: %s", initPad, tc, stage == Stage.Critical ? hlNeg : hl, stage.getName());
         info.addPara("Distance: %s LY", pad, tc, hl, Misc.getRoundedValueMaxOneAfterDecimal(lyTraveled));
+
+        if(stage == Stage.Extreme && mode == ListInfoMode.MESSAGES) {
+            SpecialItemSpecAPI spec = Global.getSettings().getSpecialItemSpec(Items.TOPOGRAPHIC_DATA);
+
+            pf.getCargo().addSpecial(new SpecialItemData(Items.TOPOGRAPHIC_DATA, null), 1);
+            Global.getSoundPlayer().playUISound(spec.getSoundIdDrop(), 1, 1);
+            info.addPara("Gained " + spec.getName(), pad, tc);
+        }
     }
 
     @Override
@@ -540,24 +639,32 @@ public class AnomalyIntel extends BaseIntelPlugin {
                     info.beginGrid(w, 4);
                     info.addToGrid(0, 0, "STAGE", "");
                     info.addToGrid(1, 0, "", "FUEL", tc);
-                    //info.addToGrid(2, 0, "", "CR", tc);
                     info.addToGrid(2, 0, "", "DATA", tc);
                     info.addToGrid(3, 0, "", "DIST.", tc);
                     info.addGrid(10);
 
-                    for (Stage s : getKnownStages()) {
+                    for (Stage s : Stage.values()) {
+                        if (s.ordinal() <= Stage.Propagation.ordinal()) continue;
+
+                        boolean revealed = s.ordinal() <= highestStage.ordinal() + 1;
                         boolean current = s == stage;
 
                         info.beginGrid(w, 4, current ? tc : gc);
                         info.addToGrid(0, 0, "" + s.getName(), "");
-                        info.addToGrid(1, 0, "", "+" + (int) s.getFuelConsumptionPercentIncrease() + "%",
-                                current ? (s.getFuelConsumptionPercentIncrease() > 0 ? hlNeg : tc) : gc);
-//                        info.addToGrid(2, 0, "", "-" + (int) (s.getCrDecayRate() * 100) + "%",
-//                                current ? (s.getCrDecayRate() > 0 ? hlNeg : tc) : gc);
-                        info.addToGrid(2, 0, "", "x" + (int) s.getDataPerLY() + " / LY",
-                                current ? (s.getDataPerLY() > 0 ? hlData : tc) : gc);
-                        info.addToGrid(3, 0, "", "" + (int) (s == Stage.Inert ? 0 :s.getLyToReach()) + " LY",
-                                current ? tc : gc);
+
+                        if(revealed) {
+                            info.addToGrid(1, 0, "", "+" + (int) s.getFuelConsumptionPercentIncrease() + "%",
+                                    current ? (s.getFuelConsumptionPercentIncrease() > 0 ? hlNeg : tc) : gc);
+                            info.addToGrid(2, 0, "", "x" + (int) s.getDataPerLY() + " / LY",
+                                    current ? (s.getDataPerLY() > 0 ? hlData : tc) : gc);
+                            info.addToGrid(3, 0, "", "" + (int) (s == Stage.Inert ? 0 : s.getLyToReach()) + " LY",
+                                    current ? tc : gc);
+                        } else {
+                            info.addToGrid(1, 0, "", "?", gc);
+                            info.addToGrid(2, 0, "", "?", gc);
+                            info.addToGrid(3, 0, "", "?", gc);
+                        }
+
                         info.addGrid(0);
                     }
                 }
@@ -599,7 +706,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
                 switch (fuelVuln) {
                     case Protected: {
-                        para = "All of your fuel is protected, preventing it from being consumed at a higher rate.";
+                        para = "All of your remaining fuel is protected, preventing it from being consumed at a higher rate.";
                     } break;
                     case Militarized: {
                         para = "Some fuel is currently stored within militarized ships, " + str;
@@ -648,15 +755,25 @@ public class AnomalyIntel extends BaseIntelPlugin {
                     info.addToGrid(2, 0, "", "CREDITS", tc);
                     info.addGrid(10);
 
-                    for (Stage s : getKnownStages()) {
+                    for (Stage s : Stage.values()) {
+                        if (s.ordinal() <= Stage.Propagation.ordinal()) continue;
+
+                        boolean revealed = s.ordinal() <= highestStage.ordinal() + 1;
                         boolean current = s == stage;
                         int data = (int)(s.getDataPerLY() * (1 + 0.01f * getDataPercentIncreaseFromSensors()));
                         int val = (int)(data * getDataCommoditySpec().getBasePrice());
 
                         info.beginGrid(w, 3, current ? tc : gc);
                         info.addToGrid(0, 0, "" + s.getName(), "");
-                        info.addToGrid(1, 0, "", data + " / LY", current ? (data > 0 ? hlData : tc) : gc);
-                        info.addToGrid(2, 0, "", Misc.getDGSCredits(val) + " / LY", current ? (val > 0 ? hl : tc) : gc);
+
+                        if(revealed) {
+                            info.addToGrid(1, 0, "", data + " / LY", current ? (data > 0 ? hlData : tc) : gc);
+                            info.addToGrid(2, 0, "", Misc.getDGSCredits(val) + " / LY", current ? (val > 0 ? hl : tc) : gc);
+                        } else {
+                            info.addToGrid(1, 0, "", "?", gc);
+                            info.addToGrid(2, 0, "", "?", gc);
+                        }
+
                         info.addGrid(0);
                     }
                 }
@@ -693,32 +810,16 @@ public class AnomalyIntel extends BaseIntelPlugin {
         // Handle player fleet changing on respawn
         if(pf != Global.getSector().getPlayerFleet()) {
             pf = Global.getSector().getPlayerFleet();
-            resetStage();
+
+            if(stage.ordinal() >= Stage.Inert.ordinal()) resetStage();
         }
 
-        if(convertingExcessFuel && enabled && !Global.getSector().isPaused()) {
-            CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-            float diff = cargo.getFuel() - cargo.getMaxFuel();
-
-            if(diff > 0) {
-                float data = diff / getFuelBurnedToEarnOneData();
-                int wholeData = (int)Math.floor(data);
-                dataProgress += data - wholeData;
-
-                cargo.removeFuel(diff);
-                cargo.addCommodity(ModPlugin.DATA_COMMODITY_ID, wholeData);
-
-                if(wholeData >= 1) {
-                    Global.getSector().getCampaignUI().addMessage("%s units of excess fuel converted into %s data",
-                            Misc.getTextColor(), (int)diff + "", wholeData + "", Misc.getHighlightColor(),
-                            Util.getAnomalyDataColor());
-                }
-            }
-        }
+        if(!Global.getSector().isPaused()) convertExcessFuelIfNeeded(false);
 
         if(!enabled || disallowed) {
             pf.getStats().getFuelUseHyperMult().unmodify(EFFECT_ID);
             updateLastFrameInfo();
+            dataEarnedFromTravelThisTrip = 0;
             return;
         }
 
@@ -728,36 +829,16 @@ public class AnomalyIntel extends BaseIntelPlugin {
             amount *= Global.getSettings().getFloat("campaignSpeedupMult");
         }
 
-        CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
         float lyLastFrame = (pf.isInHyperspace() && pf.getCargo().getFuel() > 0)
                 ? locLastFrame == null ? 0 : Misc.getDistanceLY(locLastFrame, pf.getLocationInHyperspace())
                 : 0;
         float fuelSpentLastFrame = fuelLastFrame - pf.getCargo().getFuel();
         float fuelBurnedByAnomaly = 0;
-        float fuelUseMult = getFuelConsumptionMult();
 
         if(pf.isInHyperspace()) lyTraveled += lyLastFrame;
 
         // Manage fuel usage
-        {
-            CoreUITabId tab = Global.getSector().getCampaignUI().getCurrentCoreTab();
-            MutableStat fuelUse = pf.getStats().getFuelUseHyperMult();
-            boolean isInDialog = Global.getSector().getCampaignUI().getCurrentInteractionDialog() != null;
-
-            fuelUse.unmodify(EFFECT_ID);
-
-            if (tab == CoreUITabId.INTEL || tab == CoreUITabId.MAP || isInDialog) {
-                // Adjust fuel usage so the fuel range circles account for the anomaly
-
-                adjustFuelConsumptionForFuelRangeIndicator();
-            } else {
-                Global.getSector().getCampaignUI().setSuppressFuelRangeRenderingOneFrame(true);
-
-                if (fuelUseMult != 1 && pf.isInHyperspace()) {
-                    fuelUse.modifyMult(EFFECT_ID, fuelUseMult, "Hyperspace drive anomaly");
-                }
-            }
-        }
+        applyFuelConsumptionMult();
 
         // Award data
         if(lyLastFrame > 0) {
@@ -766,7 +847,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
             dataEarnedFromTravelThisTrip += newDataFromTravel;
 
             if(fuelSpentLastFrame > 0) {
-                fuelBurnedByAnomaly += fuelSpentLastFrame * (1 - 1 / fuelUseMult);
+                fuelBurnedByAnomaly += fuelSpentLastFrame * (1 - 1 / getFuelConsumptionMult());
 
                 dataProgress += fuelBurnedByAnomaly / getFuelBurnedToEarnOneData();
             }
@@ -785,31 +866,29 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
             if(stage.ordinal() < Stage.Inert.ordinal() && !ModPlugin.ALLOW_ANOMALY_TOGGLE) {
                 // Then the stage should be increased to base level, as propagation has already happened in-lore
+
                 setHidden(false);
                 setNew(true);
                 setImportant(true);
                 resetStage();
             } else if(lyTraveled > 0 && isPlayerInteractingWithAnomalyResetSource()) {
-                // Then the stage should be reduced to base level
+                // Then the stage should be reduced to base level and XP should be awarded for earned data
 
-                if(isPlayerInteractingWithAnomalyResetSource()) {
-                    InteractionDialogAPI dialog = Global.getSector().getCampaignUI().getCurrentInteractionDialog();
+                InteractionDialogAPI dialog = Global.getSector().getCampaignUI().getCurrentInteractionDialog();
+                long xpFromTravel = (long)(dataEarnedFromTravelThisTrip) * ModPlugin.XP_PER_DATA_EARNED_FROM_TRAVEL;
 
+                if(previousStage.ordinal() > Stage.Inert.ordinal() || !ModPlugin.VETERAN_MODE || xpFromTravel > 0) {
                     TooltipMakerAPI tt = dialog.getTextPanel().beginTooltip();
                     tt.setParaSmallInsignia();
                     tt.beginImageWithText(getIconName(), 32).addPara("Drive field stabilized by proximity to a " +
-                            "source of gravitonic distortion. Total distance: %s LY", 0, Misc.getHighlightColor(),
-                            (int)lyTraveled + "");
+                                    "source of gravitonic distortion. Total distance: %s LY", 0, Misc.getHighlightColor(),
+                            (int) lyTraveled + "");
                     tt.addImageWithText(3);
                     dialog.getTextPanel().addTooltip();
+                }
 
-                    long xpFromTravel = (long)(dataEarnedFromTravelThisTrip) * ModPlugin.XP_PER_DATA_EARNED_FROM_TRAVEL;
-
-                    if(xpFromTravel > 0) {
-                        Global.getSector().getPlayerStats().addXP(xpFromTravel, dialog.getTextPanel());
-                    }
-
-                    dataEarnedFromTravelThisTrip = 0;
+                if(xpFromTravel > 0) {
+                    Global.getSector().getPlayerStats().addXP(xpFromTravel, dialog.getTextPanel());
                 }
 
                 resetStage();

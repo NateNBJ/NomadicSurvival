@@ -1,22 +1,30 @@
 package nomadic_survival;
 
-import com.fs.starfarer.api.BaseModPlugin;
-import com.fs.starfarer.api.GameState;
-import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.ModSpecAPI;
+import com.fs.starfarer.api.*;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
+import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
+import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
+import com.fs.starfarer.api.combat.MutableStat;
+import com.fs.starfarer.api.impl.campaign.abilities.EmergencyBurnAbility;
+import com.fs.starfarer.api.impl.campaign.abilities.FractureJumpAbility;
+import com.fs.starfarer.api.impl.campaign.abilities.GenerateSlipsurgeAbility;
+import com.fs.starfarer.api.impl.campaign.ids.Commodities;
+import com.fs.starfarer.api.impl.campaign.intel.*;
 import com.fs.starfarer.api.impl.campaign.intel.bar.events.BarEventManager;
+import com.fs.starfarer.api.impl.campaign.skills.BulkTransport;
+import com.fs.starfarer.api.impl.campaign.skills.ContainmentProcedures;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
 import com.thoughtworks.xstream.XStream;
 import lunalib.lunaSettings.LunaSettings;
+import nomadic_survival.campaign.OperationInteractionDialogPlugin;
 import nomadic_survival.campaign.SurveyorBarEventCreator;
 import nomadic_survival.campaign.SurveyorIntelBarEvent;
-import nomadic_survival.campaign.intel.AnomalyIntel;
-import nomadic_survival.campaign.intel.OperationIntel;
+import nomadic_survival.campaign.abilities.SiphonFuelAbility;
+import nomadic_survival.campaign.intel.*;
 import nomadic_survival.integration.BaseListener;
 import org.apache.log4j.Logger;
 import org.json.JSONArray;
@@ -25,6 +33,8 @@ import org.json.JSONObject;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
+
+import static com.fs.starfarer.api.Global.getSector;
 
 public class ModPlugin extends BaseModPlugin {
     static class Version {
@@ -58,12 +68,10 @@ public class ModPlugin extends BaseModPlugin {
     }
 
     public final static String
-            ID = "sun_nomadic_survival",
             PREFIX = "sun_ns_",
             VERSION_KEY = PREFIX + "version",
             ADDED_OPERATIONS_KEY = PREFIX + "addedOperations",
             DATA_COMMODITY_ID = "sun_data",
-            SETTINGS_PATH = "NOMADIC_SURVIVAL_OPTIONS.ini",
             OPERATIONS_LIST_PATH = "data/config/nomadic_survival/planetary_operations.csv",
             ANOMALY_STAGES_LIST_PATH = "data/config/nomadic_survival/anomaly_stages.csv",
             SURVEYOR_EVENT_BLACKLIST_PATH = "data/config/nomadic_survival/surveyor_event_blacklist.csv",
@@ -75,22 +83,44 @@ public class ModPlugin extends BaseModPlugin {
             MAX_OPERATION_TYPES_PER_PLANET = 6;
 
     public static boolean
+            PERILOUS_MODE = true,
             ENABLE_ANOMALY = true,
             ALLOW_ANOMALY_TOGGLE = true,
             SHOW_SORT_OPTIONS = false,
             SHOW_FILTER_OPTIONS = false,
             SHOW_OP_FILTERS = true,
             SHOW_OPS_WHEN_REQUIRED_SKILL_IS_UNKNOWN = true,
+            ALLOW_REMOTE_MANAGEMENT_OF_COLONY_ITEMS = false,
             ENABLE_SKILL_REQUIREMENTS = true,
             SHOW_EXTRA_INFO_ABOUT_PROFITABILITY = false,
             VETERAN_MODE = false,
             MARK_NEW_OP_INTEL_AS_NEW = true;
-    public static float SURVEYOR_BAR_EVENT_FREQUENCY_MULT = 1.0f;
+    public static float
+            ORIGINAL_FUEL_PRICE = 25,
+            ORIGINAL_SLIPSURGE_FUEL_COST_MULT = 5f,
+            ORIGINAL_EBURN_FUEL_COST_MULT = 1f,
+            ORIGINAL_TJUMP_FUEL_COST_MULT = 1f,
+//            ORIGINAL_UNITS_PER_LIGHT_YEAR = 2000,
+//            VIRTUAL_DISTANCE_MULT = 1,
+            SURVEYOR_BAR_EVENT_FREQUENCY_MULT = 1.0f,
+            FUEL_CONSUMPTION_MULT = 1,
+            FUEL_PRICE_MULT = 1,
+            SENSOR_PROFILE_INCREASE_PERCENT = 300,
+            HIGH_DENSITY_CONVERSION_RATIO = 1,
+            LOW_DENSITY_CONVERSION_RATIO = 0.75f,
+            CONVERSION_RATE_MULT = 1.0f;
     public static int
+            ADDITIONAL_MISSION_PAY_PER_LY_FROM_CORE_WORLDS = 0,
             XP_PER_DATA_EARNED_FROM_TRAVEL = 100,
-            MAX_INTEL_ICONS_VISIBLE_AT_ONCE;
+            MAX_INTEL_ICONS_VISIBLE_AT_ONCE = 100,
+            MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS = 100;
+    public static String ID, SETTINGS_PATH;
 
-    static final String LUNALIB_ID = "lunalib";
+    static final String
+            NOMADIC_SURVIVAL_ID = "sun_nomadic_survival",
+            LUNALIB_ID = "lunalib",
+            FUEL_SIPHONING_ID = "sun_fuel_siphoning",
+            PERILOUS_EXPANSE_ID = "sun_perilous_expanse";
     static JSONObject settingsCfg = null;
     static <T> T get(String id, Class<T> type) throws Exception {
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
@@ -132,8 +162,35 @@ public class ModPlugin extends BaseModPlugin {
             MAX_INTEL_ICONS_VISIBLE_AT_ONCE = getInt("maxIntelIconsVisibleAtOnce");
             SHOW_EXTRA_INFO_ABOUT_PROFITABILITY = getBoolean("showExtraInfoAboutProfitability");
             VETERAN_MODE = getBoolean("veteranMode");
+            MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS = getInt("maxTravelRangeForShipsWithProtectedFuel");
 
+//            VIRTUAL_DISTANCE_MULT = Math.max(0, getFloat("virtualDistanceMult"));
+            FUEL_CONSUMPTION_MULT = Math.max(0, getFloat("fuelConsumptionMult"));
+            FUEL_PRICE_MULT = getFloat("fuelPriceMult");
+            SENSOR_PROFILE_INCREASE_PERCENT = getFloat("sensorProfileIncreasePercent");
+            HIGH_DENSITY_CONVERSION_RATIO = getFloat("highDensityConversionRatio");
+            LOW_DENSITY_CONVERSION_RATIO = getFloat("lowDensityConversionRatio");
+            CONVERSION_RATE_MULT = getFloat("conversionRateMult");
+            ALLOW_REMOTE_MANAGEMENT_OF_COLONY_ITEMS = getBoolean("allowRemoteManagementOfColonyItems");
+            ADDITIONAL_MISSION_PAY_PER_LY_FROM_CORE_WORLDS = getInt("additionalMissionPayPerLyFromCoreWorlds");
+
+            CommoditySpecAPI fuelSpec = getSector().getEconomy().getCommoditySpec("fuel");
+            MutableStat fuelConsumption = Global.getSector().getPlayerFleet().getStats().getFuelUseHyperMult();
+
+            fuelConsumption.unmodify("sun_fs_fuel_mult"); // In case it was previously modified by Fuel Siphoning
+            fuelConsumption.modifyMult("sun_ns_fuel_mult", FUEL_CONSUMPTION_MULT, "Drive field anomaly interference");
+            fuelSpec.setBasePrice(Math.max(1, ORIGINAL_FUEL_PRICE * FUEL_PRICE_MULT));
+//            Global.getSettings().setFloat("unitsPerLightYear", ORIGINAL_UNITS_PER_LIGHT_YEAR * VIRTUAL_DISTANCE_MULT);
+            Global.getSettings().setBoolean("allowRemoteIndustryItemManagement", ALLOW_REMOTE_MANAGEMENT_OF_COLONY_ITEMS);
             Global.getSector().getCampaignUI().setMaxIntelMapIcons(MAX_INTEL_ICONS_VISIBLE_AT_ONCE);
+
+            IntelManagerAPI im = Global.getSector().getIntelManager();
+
+            // Update mission rewards, as distance scaling may have changed
+            for(IntelInfoPlugin intel : im.getIntel(NS_AnalyzeEntityMissionIntel.class)) ((NS_AnalyzeEntityMissionIntel)intel).updateReward();
+            for(IntelInfoPlugin intel : im.getCommQueue(NS_AnalyzeEntityMissionIntel.class)) ((NS_AnalyzeEntityMissionIntel)intel).updateReward();
+            for(IntelInfoPlugin intel : im.getIntel(NS_SurveyPlanetMissionIntel.class)) ((NS_SurveyPlanetMissionIntel)intel).updateReward();
+            for(IntelInfoPlugin intel : im.getCommQueue(NS_SurveyPlanetMissionIntel.class)) ((NS_SurveyPlanetMissionIntel)intel).updateReward();
 
         } catch (Exception e) {
             settingsCfg = null;
@@ -175,8 +232,8 @@ public class ModPlugin extends BaseModPlugin {
                 if(exception.getMessage() != null) {
                     Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
                 }
-            } else if (Global.getSector() != null) {
-                CampaignUIAPI ui = Global.getSector().getCampaignUI();
+            } else if (getSector() != null) {
+                CampaignUIAPI ui = getSector().getCampaignUI();
 
                 ui.addMessage(message, Color.RED);
                 ui.addMessage(exception.getMessage(), Color.ORANGE);
@@ -194,7 +251,7 @@ public class ModPlugin extends BaseModPlugin {
         return instance != null && instance.settingsAlreadyRead;
     }
     static void onSettingsSuccessfullyRead() {
-        IntelManagerAPI intel = Global.getSector().getIntelManager();
+        IntelManagerAPI intel = getSector().getIntelManager();
 
         if(!ENABLE_ANOMALY && AnomalyIntel.getInstance() != null) {
             intel.removeIntel(AnomalyIntel.getInstance());
@@ -212,7 +269,7 @@ public class ModPlugin extends BaseModPlugin {
             final long DETERMINISTIC_SEED = 123456;
             WeightedRandomPicker<PlanetAPI> picker = new WeightedRandomPicker(new Random(DETERMINISTIC_SEED));
 
-            for (LocationAPI loc : Global.getSector().getAllLocations()) {
+            for (LocationAPI loc : getSector().getAllLocations()) {
                 for (PlanetAPI planet : loc.getPlanets()) {
                     if (!planet.isStar()) {
                         picker.add(planet);
@@ -241,7 +298,7 @@ public class ModPlugin extends BaseModPlugin {
                 if(!opTypesAlreadyAdded.contains(typeId)) {
                     log.info("Adding new operation type to sector:" + typeId);
 
-                    for (LocationAPI loc : Global.getSector().getAllLocations()) {
+                    for (LocationAPI loc : getSector().getAllLocations()) {
                         for (PlanetAPI planet : loc.getPlanets()) {
                             if (!planet.isStar()) {
                                 Util.maybeAddOpToPlanet(planet, typeId);
@@ -259,7 +316,7 @@ public class ModPlugin extends BaseModPlugin {
         updatedToNewVersion = false;
     }
     public static boolean isUpdateDiagnosticCheckNeeded() {
-        version = (String)Global.getSector().getPersistentData().get(VERSION_KEY);
+        version = (String) getSector().getPersistentData().get(VERSION_KEY);
 
         if(version == null || version.equals("")) return true;
 
@@ -269,7 +326,7 @@ public class ModPlugin extends BaseModPlugin {
         return lastSavedVersion.isOlderThan(currentVersion, true);
     }
     public static Set<String> getIdsOfAddedOperationTypes() {
-        Map<String, Object> data = Global.getSector().getPersistentData();
+        Map<String, Object> data = getSector().getPersistentData();
         Set<String> retVal = data.containsKey(ADDED_OPERATIONS_KEY)
                 ? (Set<String>) data.get(ADDED_OPERATIONS_KEY)
                 : new HashSet<String>();
@@ -284,7 +341,7 @@ public class ModPlugin extends BaseModPlugin {
         return retVal;
     }
     public static void saveIdsOfAddedOperationTypes(Set<String> ids) {
-        Map<String, Object> data = Global.getSector().getPersistentData();
+        Map<String, Object> data = getSector().getPersistentData();
         data.put(ADDED_OPERATIONS_KEY, ids);
     }
 
@@ -351,33 +408,71 @@ public class ModPlugin extends BaseModPlugin {
     }
     public void removeScripts() {
         if(script != null) {
-            Global.getSector().removeTransientScript(script);
-            Global.getSector().getListenerManager().removeListener(script);
+            getSector().removeTransientScript(script);
+            getSector().getListenerManager().removeListener(script);
         }
 
-        Global.getSector().removeScriptsOfClass(CampaignScript.class);
+        getSector().removeScriptsOfClass(CampaignScript.class);
 
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
-            Global.getSector().getListenerManager().removeListenerOfClass(LunaSettingsChangedListener.class);
+            getSector().getListenerManager().removeListenerOfClass(LunaSettingsChangedListener.class);
         }
     }
     public void addScripts() {
-        Global.getSector().addTransientScript(script = new CampaignScript());
-        Global.getSector().getListenerManager().addListener(script, true);
+        getSector().addTransientScript(script = new CampaignScript());
+        getSector().getListenerManager().addListener(script, true);
 
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
-            Global.getSector().getListenerManager().addListener(new LunaSettingsChangedListener());
+            getSector().getListenerManager().addListener(new LunaSettingsChangedListener());
+        }
+    }
+    public void overrideMissionCreatorsIfNeeded() {
+        GenericMissionManager gm = GenericMissionManager.getInstance();
+
+        Iterator<GenericMissionManager.GenericMissionCreator> iter = gm.getCreators().iterator();
+        while (iter.hasNext()) {
+            GenericMissionManager.GenericMissionCreator creator = iter.next();
+
+            if(creator.getClass() == AnalyzeEntityIntelCreator.class) iter.remove();
+            if(creator.getClass() == SurveyPlanetIntelCreator.class) iter.remove();
+        }
+
+        if (!gm.hasMissionCreator(NS_AnalyzeEntityIntelCreator.class)) {
+            gm.addMissionCreator(new NS_AnalyzeEntityIntelCreator());
+        }
+
+        if (!gm.hasMissionCreator(NS_SurveyPlanetIntelCreator.class)) {
+            gm.addMissionCreator(new NS_SurveyPlanetIntelCreator());
         }
     }
 
     @Override
     public void onApplicationLoad() throws Exception {
-        instance = this;
-
+        ModManagerAPI mm = Global.getSettings().getModManager();
         String message = "";
 
+        instance = this;
+        PERILOUS_MODE = mm.isModEnabled(PERILOUS_EXPANSE_ID);
+        ORIGINAL_FUEL_PRICE = Global.getSettings().getCommoditySpec(Commodities.FUEL).getBasePrice();
+        ORIGINAL_SLIPSURGE_FUEL_COST_MULT = GenerateSlipsurgeAbility.FUEL_COST_MULT;
+        ORIGINAL_TJUMP_FUEL_COST_MULT = FractureJumpAbility.FUEL_USE_MULT;
+        ORIGINAL_EBURN_FUEL_COST_MULT = EmergencyBurnAbility.FUEL_USE_MULT;
+//        ORIGINAL_UNITS_PER_LIGHT_YEAR = Global.getSettings().getUnitsPerLightYear();
+        ID = PERILOUS_MODE ? PERILOUS_EXPANSE_ID : NOMADIC_SURVIVAL_ID;
+        SETTINGS_PATH = PERILOUS_MODE ? "PERILOUS_EXPANSE_OPTIONS.ini" : "NOMADIC_SURVIVAL_OPTIONS.ini";
+
+        if(mm.isModEnabled(PERILOUS_EXPANSE_ID) && mm.isModEnabled(NOMADIC_SURVIVAL_ID)) {
+            throw new IllegalStateException("Nomadic Survival and Perilous Expanse have overlapping functionality, " +
+                    "and are incompatible.\n\nPlease disable one.\n");
+        }
+
+        if(mm.isModEnabled(FUEL_SIPHONING_ID)) {
+            throw new IllegalStateException(mm.getModSpec(ID).getName() + " already includes Fuel Siphoning, and is " +
+                    "incompatible with the standalone version.\n\nPlease disable Fuel Siphoning.\n");
+        }
+
         try {
-            ModSpecAPI spec = Global.getSettings().getModManager().getModSpec(ID);
+            ModSpecAPI spec = mm.getModSpec(ID);
             Version minimumVersion = new Version(spec.getGameVersion());
             Version currentVersion = new Version(Global.getSettings().getVersionString());
 
@@ -401,6 +496,15 @@ public class ModPlugin extends BaseModPlugin {
         removeScripts();
         OperationIntel.loadInstanceRegistry();
 
+        if(PERILOUS_MODE) {
+            BulkTransport.FUEL_CAPACITY_MAX_PERCENT = 25f; // Vanilla default: 50
+            ContainmentProcedures.FUEL_USE_REDUCTION_MAX_PERCENT = 25f; // Vanilla default: 50
+        }
+
+        if(!getSector().getPlayerFleet().hasAbility(SiphonFuelAbility.ID)) {
+            getSector().getCharacterData().addAbility(SiphonFuelAbility.ID);
+        }
+
         // This must be done before reading settings to ensure that things trigger in onSettingsSuccessfullyRead
         if(isUpdateDiagnosticCheckNeeded()) {
             String oldVersion = version;
@@ -411,13 +515,14 @@ public class ModPlugin extends BaseModPlugin {
             log.info("Nomadic Survival version updated from " + oldVersion + " to " + version);
             log.info("Performing update diagnostics...");
 
-            Global.getSector().getPersistentData().put(VERSION_KEY, version);
+            getSector().getPersistentData().put(VERSION_KEY, version);
 
             log.info("Update diagnostics complete.");
             updatedToNewVersion = true;
         }
         readSettingsIfNecessary(true);
         addScripts();
+        overrideMissionCreatorsIfNeeded();
 
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
                 LunaSettingsChangedListener.addToManagerIfNeeded();
@@ -442,5 +547,43 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void configureXStream(XStream x) {
         OperationIntel.configureXStream(x);
+
+        x.alias("NS_SurveyPlanetMissionIntel", NS_SurveyPlanetMissionIntel.class);
+        x.alias("NS_AnalyzeEntityMissionIntel", NS_AnalyzeEntityMissionIntel.class);
+        x.alias("NS_AnalyzeEntityIntelCreator", NS_AnalyzeEntityIntelCreator.class);
+        x.alias("NS_SurveyPlanetIntelCreator", NS_SurveyPlanetIntelCreator.class);
+    }
+
+    @Override
+    public void onNewGameAfterEconomyLoad() {
+        if(!ModPlugin.VETERAN_MODE) {
+            getSector().getPersistentData().put(OperationInteractionDialogPlugin.TOOLTIP_NEEDS_SHOWN_KEY, true);
+        }
+
+        readSettingsIfNecessary(true);
+        overrideMissionCreatorsIfNeeded();
+    }
+
+    @Override
+    public void onNewGameAfterTimePass() {
+        GenericMissionManager gm = GenericMissionManager.getInstance();
+        IntelManagerAPI im = Global.getSector().getIntelManager();
+
+        // Remove vanilla versions of missions that have already been created
+        Util.removeIntelOfSpecificClass(AnalyzeEntityMissionIntel.class);
+        Util.removeIntelOfSpecificClass(SurveyPlanetMissionIntel.class);
+
+        // Add one of each overriden mission type
+        EveryFrameScript script = new NS_AnalyzeEntityIntelCreator().createMissionIntel();
+        if (script instanceof BaseIntelPlugin) {
+            ((BaseIntelPlugin)script).setPostingLocation(null);
+            gm.addActive(script);
+        }
+
+        script = new NS_SurveyPlanetIntelCreator().createMissionIntel();
+        if (script instanceof BaseIntelPlugin) {
+            ((BaseIntelPlugin)script).setPostingLocation(null);
+            gm.addActive(script);
+        }
     }
 }
