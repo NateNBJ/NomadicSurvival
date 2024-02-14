@@ -9,6 +9,7 @@ import com.fs.starfarer.api.combat.ShipHullSpecAPI;
 import com.fs.starfarer.api.combat.StatBonus;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.abilities.EmergencyBurnAbility;
+import com.fs.starfarer.api.impl.campaign.abilities.FractureJumpAbility;
 import com.fs.starfarer.api.impl.campaign.abilities.GenerateSlipsurgeAbility;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.HullMods;
@@ -368,7 +369,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         fuelUse.unmodify(EFFECT_ID);
         GenerateSlipsurgeAbility.FUEL_COST_MULT = ModPlugin.ORIGINAL_SLIPSURGE_FUEL_COST_MULT;
         EmergencyBurnAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_EBURN_FUEL_COST_MULT / ModPlugin.FUEL_CONSUMPTION_MULT;
-// TODO        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
+        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
 
 
         if (Util.isPossibleForAnyMapToBeSeen()) {
@@ -384,7 +385,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
                 // Counteract the effects of the multiplier on the slipsurge ability
                 GenerateSlipsurgeAbility.FUEL_COST_MULT /= fuelUseMult;
                 EmergencyBurnAbility.FUEL_USE_MULT /= fuelUseMult;
-// TODO                FractureJumpAbility.FUEL_USE_MULT /= fuelUseMult;
+                FractureJumpAbility.FUEL_USE_MULT /= fuelUseMult;
             }
         }
     }
@@ -426,7 +427,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         pf.getStats().getFuelUseHyperMult().unmodify(EFFECT_ID);
         GenerateSlipsurgeAbility.FUEL_COST_MULT = ModPlugin.ORIGINAL_SLIPSURGE_FUEL_COST_MULT;
         EmergencyBurnAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_EBURN_FUEL_COST_MULT / ModPlugin.FUEL_CONSUMPTION_MULT;
-// TODO        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
+        FractureJumpAbility.FUEL_USE_MULT = ModPlugin.ORIGINAL_TJUMP_FUEL_COST_MULT;
     }
 
     void updateLastFrameInfo() {
@@ -963,7 +964,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
 
     @Override
     public Set<String> getIntelTags(SectorMapAPI map) {
-        Set<String> tags = new HashSet<>();
+        Set<String> tags = super.getIntelTags(map);
 
         if(stage != Stage.Unknown) tags.add(Tags.INTEL_EXPLORATION);
 

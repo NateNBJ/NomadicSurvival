@@ -78,12 +78,13 @@ public class ModPlugin extends BaseModPlugin {
             RECYCLE_GROUPS_LIST_PATH = "data/config/nomadic_survival/recycle_groups.csv",
             CONDITION_ADJUST_LIST_PATH = "data/config/nomadic_survival/condition_adjustments.csv";
 
+    public static final Version MIN_STARSECTOR_VERSION = new Version("0.97a-RC8");
     public static final int
             MAX_INPUT_TYPES = 3,
             MAX_OPERATION_TYPES_PER_PLANET = 6;
 
     public static boolean
-            PERILOUS_MODE = true,
+            PERILOUS_MODE = false,
             ENABLE_ANOMALY = true,
             ALLOW_ANOMALY_TOGGLE = true,
             SHOW_SORT_OPTIONS = false,
@@ -450,6 +451,7 @@ public class ModPlugin extends BaseModPlugin {
     public void onApplicationLoad() throws Exception {
         ModManagerAPI mm = Global.getSettings().getModManager();
         String message = "";
+        Version currentStarsectorVersion = new Version(Global.getSettings().getVersionString());
 
         instance = this;
         PERILOUS_MODE = mm.isModEnabled(PERILOUS_EXPANSE_ID);
@@ -462,13 +464,19 @@ public class ModPlugin extends BaseModPlugin {
         SETTINGS_PATH = PERILOUS_MODE ? "PERILOUS_EXPANSE_OPTIONS.ini" : "NOMADIC_SURVIVAL_OPTIONS.ini";
 
         if(mm.isModEnabled(PERILOUS_EXPANSE_ID) && mm.isModEnabled(NOMADIC_SURVIVAL_ID)) {
-            throw new IllegalStateException("Nomadic Survival and Perilous Expanse have overlapping functionality, " +
-                    "and are incompatible.\n\nPlease disable one.\n");
+            throw new IllegalStateException("\nNomadic Survival and Perilous Expanse have overlapping " +
+                    "functionality, and are incompatible.\n\nPlease disable one.\n");
         }
 
         if(mm.isModEnabled(FUEL_SIPHONING_ID)) {
-            throw new IllegalStateException(mm.getModSpec(ID).getName() + " already includes Fuel Siphoning, and is " +
-                    "incompatible with the standalone version.\n\nPlease disable Fuel Siphoning.\n");
+            throw new IllegalStateException("\n" + mm.getModSpec(ID).getName() + " already includes Fuel Siphoning, " +
+                    "and is incompatible with the standalone version.\n\nPlease disable Fuel Siphoning.\n");
+        }
+
+        if(currentStarsectorVersion.isOlderThan(MIN_STARSECTOR_VERSION, false)) {
+            throw new IllegalStateException("\n" + mm.getModSpec(ID).getName() + " is not compatible with versions " +
+                    "of Starsector prior to " + MIN_STARSECTOR_VERSION + ".\nYou're currently using version " +
+                    currentStarsectorVersion + ".\n\nPlease update to the latest version of Starsector.\n");
         }
 
         try {
@@ -498,7 +506,7 @@ public class ModPlugin extends BaseModPlugin {
 
         if(PERILOUS_MODE) {
             BulkTransport.FUEL_CAPACITY_MAX_PERCENT = 25f; // Vanilla default: 50
-            ContainmentProcedures.FUEL_USE_REDUCTION_MAX_PERCENT = 25f; // Vanilla default: 50
+            ContainmentProcedures.FUEL_USE_REDUCTION_MAX_PERCENT = 25f; // Vanilla default: 25 (was 50, so keeping this in case it's chanced back)
         }
 
         if(!getSector().getPlayerFleet().hasAbility(SiphonFuelAbility.ID)) {

@@ -324,7 +324,7 @@ public class Util {
     }
     public static int getMissionPayForTravelTo(SectorEntityToken entity) {
         int vanillaDistanceBonus = (int) Misc.getDistance(new Vector2f(), entity.getLocationInHyperspace());
-        int modDistanceBonus = Math.max(0, vanillaDistanceBonus - 10000);
+        int modDistanceBonus = Math.max(0, vanillaDistanceBonus - 20000);
         modDistanceBonus /= Global.getSettings().getUnitsPerLightYear();
         modDistanceBonus *= ModPlugin.ADDITIONAL_MISSION_PAY_PER_LY_FROM_CORE_WORLDS;
 

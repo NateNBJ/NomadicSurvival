@@ -312,7 +312,7 @@ public class SearchIntel extends BaseIntelPlugin {
         ui.recreateIntelUI();
     }
     public Set<String> getIntelTags(SectorMapAPI map) {
-        Set<String> tags = new HashSet<>();
+        Set<String> tags = super.getIntelTags(map);
         tags.add(OperationIntel.TAG);
         return tags;
     }
