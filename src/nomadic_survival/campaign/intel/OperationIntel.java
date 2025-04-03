@@ -660,14 +660,21 @@ public class OperationIntel extends BaseIntelPlugin {
         if(getType().isAbundancePotentiallyRelevant()) {
             ConditionAdjustments ca = getConditionAdjustments();
             int incrementCount = 5;
-            int min = getType().isAbundanceRequired() ? 2 : 0;
-            int max;
+            int min, max;
 
-            max = (int)Math.max(min, incrementCount * ca.getAbundancePerMonthCap());
-            abundancePerMonthFraction = (min + rand.nextInt(max - min + 1)) / (float)incrementCount;
+            if(getType().getMaxAbundancePerMonth() > 0) {
+                min = getType().isAbundanceRequired() && getType().getMinAbundancePerMonth() <= 0 ? 2
+                        : Math.min(Math.max((int) (5f * (getType().getMinAbundancePerMonth() / (float) getType().getMaxAbundancePerMonth())), 0), 5);
+                max = (int) Math.max(min, incrementCount * ca.getAbundancePerMonthCap());
+                abundancePerMonthFraction = (min + rand.nextInt(max - min + 1)) / (float) incrementCount;
+            }
 
-            max = (int)Math.max(min, incrementCount * ca.getAbundanceCapacityCap());
-            abundanceCapacityFraction = (min + rand.nextInt(max - min + 1)) / (float)incrementCount;
+            if(getType().getMaxAbundance() > 0) {
+                min = getType().isAbundanceRequired() && getType().getMinAbundance() <= 0 ? 2
+                        : Math.min(Math.max((int) (5f * (getType().getMinAbundance() / (float) getType().getMaxAbundance())), 0), 5);
+                max = (int) Math.max(min, incrementCount * ca.getAbundanceCapacityCap());
+                abundanceCapacityFraction = (min + rand.nextInt(max - min + 1)) / (float) incrementCount;
+            }
 
             abundanceAtLastVisit = isAbundanceConsumedByOtherSource() ? 0 : getAbundanceCapacity();
         }

@@ -528,7 +528,7 @@ public class AnomalyIntel extends BaseIntelPlugin {
         if(disallowed) {
             info.addPara("You have taken measures to prevent the drive field interference caused by the anomaly.", 10);
         } else {
-            info.addPara("Anomalous interference is destabilizing your " + Util.getShipOrFleet() +
+            info.addPara("Anomalous interference may destabilize your " + Util.getShipOrFleet() +
                     "'s hyperspace drive field.", 10);
         }
 

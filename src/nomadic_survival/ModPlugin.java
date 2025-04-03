@@ -2,7 +2,6 @@ package nomadic_survival;
 
 import com.fs.starfarer.api.*;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
-import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
@@ -267,17 +266,7 @@ public class ModPlugin extends BaseModPlugin {
         }
 
         if(!OperationIntel.isExtant()) {
-            final long DETERMINISTIC_SEED = 123456;
-            WeightedRandomPicker<PlanetAPI> picker = new WeightedRandomPicker(new Random(DETERMINISTIC_SEED));
-
-            for (LocationAPI loc : getSector().getAllLocations()) {
-                for (PlanetAPI planet : loc.getPlanets()) {
-                    if (!planet.isStar()) {
-                        picker.add(planet);
-                    }
-                }
-            }
-
+            WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
             boolean temp = MARK_NEW_OP_INTEL_AS_NEW;
 
             MARK_NEW_OP_INTEL_AS_NEW = false;
@@ -291,7 +280,7 @@ public class ModPlugin extends BaseModPlugin {
             }
 
             MARK_NEW_OP_INTEL_AS_NEW = temp;
-        } else if(updatedToNewVersion) {
+        } else {
             Set<String> opTypesAlreadyAdded = getIdsOfAddedOperationTypes();
             Logger log = Global.getLogger(ModPlugin.class);
 
@@ -299,13 +288,9 @@ public class ModPlugin extends BaseModPlugin {
                 if(!opTypesAlreadyAdded.contains(typeId)) {
                     log.info("Adding new operation type to sector:" + typeId);
 
-                    for (LocationAPI loc : getSector().getAllLocations()) {
-                        for (PlanetAPI planet : loc.getPlanets()) {
-                            if (!planet.isStar()) {
-                                Util.maybeAddOpToPlanet(planet, typeId);
-                            }
-                        }
-                    }
+                    WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
+
+                    while (!picker.isEmpty()) Util.maybeAddOpToPlanet(picker.pickAndRemove(), typeId);
 
                     opTypesAlreadyAdded.add(typeId);
                 }
@@ -353,6 +338,7 @@ public class ModPlugin extends BaseModPlugin {
         if(forceRefresh) settingsAlreadyRead = false;
 
         if(settingsAlreadyRead) return true;
+        else if(Global.getSector() == null || Global.getSector().getPlayerFleet() == null) return false;
 
         try {
             OperationType.INSTANCE_REGISTRY.clear();
@@ -506,6 +492,7 @@ public class ModPlugin extends BaseModPlugin {
 
         if(PERILOUS_MODE) {
             BulkTransport.FUEL_CAPACITY_MAX_PERCENT = 25f; // Vanilla default: 50
+            BulkTransport.FUEL_CAPACITY_THRESHOLD = 6000; // Vanilla default: 2000
             ContainmentProcedures.FUEL_USE_REDUCTION_MAX_PERCENT = 25f; // Vanilla default: 25 (was 50, so keeping this in case it's chanced back)
         }
 

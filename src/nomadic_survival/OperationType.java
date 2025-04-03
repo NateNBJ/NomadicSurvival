@@ -52,18 +52,26 @@ public class OperationType {
     public static Collection<OperationType> getAll() {
         return INSTANCE_REGISTRY.values();
     }
-    public static List<OperationType> getAllForCondition(MarketConditionAPI mc) {
+    public static List<OperationType> getAllForCondition(MarketConditionAPI mc, List<OperationType> listToModifyAndReturn) {
         String id = NO_CONDITION_REQUIRED;
+
+        listToModifyAndReturn.clear();
 
         if(mc != null) {
             id = mc.getGenSpec() == null ? mc.getId() : Util.getConditionIdOrGroupId(mc.getGenSpec());
         }
 
-        if(!REGISTRY_BY_CONDITION_GROUP.containsKey(id)) {
-            REGISTRY_BY_CONDITION_GROUP.put(id, new ArrayList<OperationType>());
+        if(REGISTRY_BY_CONDITION_GROUP.containsKey(id)) {
+            listToModifyAndReturn.addAll(REGISTRY_BY_CONDITION_GROUP.get(id));
         }
 
-        return REGISTRY_BY_CONDITION_GROUP.get(id);
+        // This is a workaround to allow for defining specific conditions as requirements, even if they're part of a group
+        // Note that this will not apply when the condition id is the same as the condition group (e.g. hot and hot)
+        if(mc != null && !id.equals(mc.getId()) && REGISTRY_BY_CONDITION_GROUP.containsKey(mc.getId())) {
+            listToModifyAndReturn.addAll(REGISTRY_BY_CONDITION_GROUP.get(mc.getId()));
+        }
+
+        return listToModifyAndReturn;
     }
 
     private Set<String> tags = new HashSet<>();
@@ -72,7 +80,7 @@ public class OperationType {
             stillAvailableProse, blacklistedConditionID = null;
     private float occurrenceWeight, hazardScale, abundanceCostMult, skillReqChance,
             hazardReduction, despoilYieldMult;
-    private int maxAbundance, maxAbundancePerMonth, occurrenceLimit, firstVisitData, outputCount;
+    private int maxAbundance, minAbundance, maxAbundancePerMonth, minAbundancePerMonth, occurrenceLimit, firstVisitData, outputCount;
     private boolean abundanceRequired, despoilPreventsRegen, despoilRequiresSkill;
     private List<Input> inputs = new ArrayList<>();
     private Set<String>
@@ -139,11 +147,17 @@ public class OperationType {
     public int getMaxAbundancePerMonth() {
         return maxAbundancePerMonth;
     }
+    public int getMinAbundancePerMonth() {
+        return minAbundancePerMonth;
+    }
     public float getSkillReqChance() {
         return skillReqChance;
     }
     public int getMaxAbundance() {
         return maxAbundance;
+    }
+    public int getMinAbundance() {
+        return minAbundance;
     }
     public boolean isAbundanceRequired() {
         return abundanceRequired;
@@ -319,8 +333,14 @@ public class OperationType {
     public void setMaxAbundance(int maxAbundance) {
         this.maxAbundance = maxAbundance;
     }
+    public void setMinAbundance(int minAbundance) {
+        this.minAbundance = minAbundance;
+    }
     public void setMaxAbundancePerMonth(int maxAbundancePerMonth) {
         this.maxAbundancePerMonth = maxAbundancePerMonth;
+    }
+    public void setMinAbundancePerMonth(int minAbundancePerMonth) {
+        this.minAbundancePerMonth = minAbundancePerMonth;
     }
     public void setOccurrenceLimit(int occurrenceLimit) {
         this.occurrenceLimit = occurrenceLimit;
@@ -408,7 +428,9 @@ public class OperationType {
 
         // Abundance info
         abundanceCostMult = (float) data.optDouble("abundance_cost_mult", 1);
+        minAbundancePerMonth = data.optInt("min_abundance_per_month", 0);
         maxAbundancePerMonth = data.optInt("max_abundance_per_month", 0);
+        minAbundance = data.optInt("min_abundance", 0);
         maxAbundance = data.optInt("max_abundance", 0);
         abundanceRequired = data.getBoolean("abundance_required");
         firstVisitData = data.optInt("first_visit_data", 0);

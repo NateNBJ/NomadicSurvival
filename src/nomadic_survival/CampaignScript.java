@@ -8,7 +8,9 @@ import com.fs.starfarer.api.campaign.comm.IntelInfoPlugin;
 import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.listeners.NavigationDataSectionListener;
 import com.fs.starfarer.api.impl.campaign.ids.Entities;
+import com.fs.starfarer.api.impl.campaign.ids.Tags;
 import com.fs.starfarer.api.util.Misc;
+import com.fs.starfarer.campaign.Faction;
 import nomadic_survival.campaign.intel.AnomalyIntel;
 import nomadic_survival.campaign.intel.SearchIntel;
 import nomadic_survival.campaign.rulecmd.SUN_NS_ConsiderPlanetaryOperations;
@@ -89,7 +91,11 @@ public class CampaignScript implements EveryFrameScript, NavigationDataSectionLi
                             }
                         }
 
-                        if(lootTarget.getCargo() != null) {
+                        if(lootTarget.getCargo() != null
+                                && !lootTarget.hasTag(Tags.STATION)
+                                && lootTarget.getMarket() == null
+                                && (lootTarget.getFaction() == null || lootTarget.getFaction().equals(Faction.NO_FACTION))) {
+
                             float fuel = lootTarget.getCargo().getFuel();
                             pf.getCargo().addFuel(fuel);
                             lootTarget.getCargo().removeFuel(fuel);

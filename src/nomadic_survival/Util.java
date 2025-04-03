@@ -24,6 +24,7 @@ import java.awt.*;
 import java.util.List;
 import java.util.*;
 
+import static com.fs.starfarer.api.Global.getSector;
 import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
 public class Util {
@@ -71,10 +72,12 @@ public class Util {
     public static List<OperationIntel> addOpsToPlanet(PlanetAPI planet, String opTypeId) {
         List<OperationIntel> retVal = OperationIntel.getAllForPlanet(planet);
         boolean planetIsClaimed = Util.isPlanetClaimedByNPC(planet);
+        boolean planetIsColonized = Util.isPlanetColonizedByNPC(planet);
         Random rand = new Random(planet.getMemoryWithoutUpdate().getLong(MemFlags.SALVAGE_SEED));
         WeightedRandomPicker<OperationType> picker = new WeightedRandomPicker<>(rand);
         Stack<OperationType> guaranteedPicks = new Stack<>();
         List<MarketConditionAPI> copyOfMCs = new ArrayList<>(planet.getMarket().getConditions());
+        List<OperationType> listToModifyAndReturn = new LinkedList<>();
 
         // For the sake of operation types that don't require conditions
         copyOfMCs.add(null);
@@ -83,7 +86,7 @@ public class Util {
         picker.add(null, planet.getMarket().getHazardValue() * (planetIsClaimed ? 2 : 1));
 
         for (MarketConditionAPI mc : copyOfMCs) {
-            for (OperationType type : OperationType.getAllForCondition(mc)) {
+            for (OperationType type : OperationType.getAllForCondition(mc, listToModifyAndReturn)) {
                 if((opTypeId == null || type.getId().equals(opTypeId))
                         && type.isPossibleOnPlanet(planet)
                         && (!planetIsClaimed || !type.isAbundanceRequired())
@@ -92,8 +95,9 @@ public class Util {
 
                     float weight = type.getOccurrenceWeight(mc);
 
-                    if(weight < 0 || weight >= 999) guaranteedPicks.add(type);
-                    else picker.add(type, weight);
+                    if(type.getBaseOccurrenceWeight() < 0 || type.getBaseOccurrenceWeight() >= 999) {
+                        guaranteedPicks.add(type);
+                    } else if(weight > 0 && !planetIsColonized) picker.add(type, weight);
                 }
             }
         }
@@ -135,9 +139,6 @@ public class Util {
 
         if(!isValidOpPlanet(planet)) {
             retVal = null;
-        } else if(Util.isPlanetColonizedByNPC(planet)) {
-            // Prevent ops from spawning at planets owned by NPC factions
-            retVal = OperationIntel.getAllForPlanet(planet);
         } else {
             retVal = addOpsToPlanet(planet, opID);
         }
@@ -154,9 +155,6 @@ public class Util {
         if(!isValidOpPlanet(planet)) {
             retVal = null;
         } else if(OperationIntel.existsForPlanet(planet)) {
-            retVal = OperationIntel.getAllForPlanet(planet);
-        } else if(Util.isPlanetColonizedByNPC(planet)) {
-            // Prevent ops from spawning at planets owned by NPC factions
             retVal = OperationIntel.getAllForPlanet(planet);
         } else {
             retVal = addOpsToPlanet(planet, null);
@@ -359,5 +357,19 @@ public class Util {
 
 
         return true;
+    }
+    public static WeightedRandomPicker<PlanetAPI> getPlanetPicker() {
+        final long DETERMINISTIC_SEED = 123456;
+        WeightedRandomPicker<PlanetAPI> picker = new WeightedRandomPicker(new Random(DETERMINISTIC_SEED));
+
+        for (LocationAPI loc : getSector().getAllLocations()) {
+            for (PlanetAPI planet : loc.getPlanets()) {
+                if (!planet.isStar()) {
+                    picker.add(planet);
+                }
+            }
+        }
+
+        return picker;
     }
 }
