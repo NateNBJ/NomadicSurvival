@@ -416,7 +416,7 @@ public class OperationType {
         requiredConditionGroup = data.optString("required_condition_group", NO_CONDITION_REQUIRED);
         occurrenceWeight = (float) data.optDouble("occurrence_weight", -1);
         occurrenceLimit = data.optInt("occurrence_limit", Integer.MAX_VALUE);
-        skillReqID = data.getString("skill_req_id");
+        skillReqID = data.getString(ModPlugin.SIC_IS_ACTIVE ? "sc_aptitude_req_id" : "skill_req_id");
         skillReqExcuse = data.getString("skill_req_excuse");
         skillReqChance = (float) data.optDouble("skill_req_chance", 0);
 

@@ -14,8 +14,8 @@ import nomadic_survival.Util;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 public class SearchIntel extends BaseIntelPlugin {
     enum ButtonID { Apply, AutoApply, FilterUnavailable, FilterType }
@@ -354,5 +354,9 @@ public class SearchIntel extends BaseIntelPlugin {
         knownOps = new HashMap<>();
 
         return this;
+    }
+
+    public boolean isHidden() {
+        return !ModPlugin.ENABLE_PLANET_OPS || super.isHidden();
     }
 }

@@ -213,8 +213,12 @@ public class OperationInteractionDialogPlugin implements InteractionDialogPlugin
                 String nopeReason = null;
 
                 if(!intel.isRequiredSkillKnown()) {
-                    nopeReason = "Proficiency in " + intel.getRequiredSkill().getName().toLowerCase()
-                            + " is required to perform the operation.";
+                    if(ModPlugin.SIC_IS_ACTIVE) {
+                        nopeReason = intel.getRequiredSkillName() + " aptitude is required to perform the operation.";
+                    } else {
+                        nopeReason = "Proficiency in " + intel.getRequiredSkillName().toLowerCase()
+                                + " is required to perform the operation.";
+                    }
                 } else if(maxBatchesAvailableInAbundance <= 0) {
                     String atWhat = !type.isAbundanceRequired()
                             ? " at reduced " + (type.isRisky() ? "risk" : "cost")

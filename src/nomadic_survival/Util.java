@@ -21,10 +21,11 @@ import nomadic_survival.campaign.intel.OperationIntel;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 import static com.fs.starfarer.api.Global.getSector;
+import static nomadic_survival.ModPlugin.ENABLE_PLANET_OPS;
 import static nomadic_survival.ModPlugin.MARK_NEW_OP_INTEL_AS_NEW;
 
 public class Util {
@@ -152,7 +153,7 @@ public class Util {
     public static List<OperationIntel> getOperationsAvailableAtPlanet(PlanetAPI planet, boolean addIntel) {
         List<OperationIntel> retVal;
 
-        if(!isValidOpPlanet(planet)) {
+        if(!ENABLE_PLANET_OPS || !isValidOpPlanet(planet)) {
             retVal = null;
         } else if(OperationIntel.existsForPlanet(planet)) {
             retVal = OperationIntel.getAllForPlanet(planet);
@@ -251,6 +252,8 @@ public class Util {
                 && mc.getGenSpec().getGroup().equals(id);
     }
     public static void refreshKnownOperations() {
+        if(!ENABLE_PLANET_OPS) return;
+
         for (LocationAPI loc : Global.getSector().getAllLocations()) {
             for (SectorEntityToken token : loc.getAllEntities()) {
                 final MarketAPI market = token.getMarket();
@@ -371,5 +374,17 @@ public class Util {
         }
 
         return picker;
+    }
+    public static boolean isWithinInteractionRange(SectorEntityToken token) {
+        if(token.isInCurrentLocation()) {
+            CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+            float dist = Misc.getDistance(token, pf);
+            float radii = token.getRadius() + pf.getRadius();
+            float diff = dist - radii;
+
+            return diff < 1;
+        }
+
+        return false;
     }
 }

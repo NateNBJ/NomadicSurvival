@@ -28,8 +28,8 @@ import org.json.JSONObject;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 public class AnomalyIntel extends BaseIntelPlugin {
     public enum Stage {
@@ -247,7 +247,8 @@ public class AnomalyIntel extends BaseIntelPlugin {
         boolean atMarket = entity != null
                 && entity.getMarket() != null
                 && entity.getMarket().getSubmarketsCopy() != null
-                && !entity.getMarket().getSubmarketsCopy().isEmpty();
+                && !entity.getMarket().getSubmarketsCopy().isEmpty()
+                && Util.isWithinInteractionRange(entity);
 
         return atBlackHole || atMarket;
     }

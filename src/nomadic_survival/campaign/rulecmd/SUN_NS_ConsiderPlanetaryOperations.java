@@ -5,8 +5,10 @@ import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.util.Misc;
+import nomadic_survival.ModPlugin;
 import nomadic_survival.Util;
 import nomadic_survival.campaign.intel.OperationIntel;
+import nomadic_survival.integration.SecondInCommand;
 import org.lwjgl.input.Keyboard;
 
 import java.util.List;
@@ -47,11 +49,37 @@ public class SUN_NS_ConsiderPlanetaryOperations extends BaseCommandPlugin {
 //                        dialog.setOptionColor(optionID, Util.getAnomalyDataColor());
 //                    }
                 } else if(!op.isRequiredSkillKnown()) {
-                    String hlStr = op.getRequiredSkill().getName().toLowerCase();
+                    String hlStr = op.getRequiredSkillName(),
+                            excuse = op.getType().getSkillReqExcuse() + ".",
+                            required = "is required to perform this operation.";
 
                     options.setEnabled(optionID, false);
-                    options.setTooltip(optionID, "Proficiency in " + hlStr + " is required to perform this operation.");
-                    options.setTooltipHighlights(optionID, hlStr);
+
+                    if(ModPlugin.SIC_IS_ACTIVE) {
+                        options.setTooltip(optionID, excuse + "\n\n" + hlStr + " aptitude " + required);
+                        options.setTooltipHighlightColors(optionID,
+                                Misc.getGrayColor(),
+                                SecondInCommand.getAptitudeColor(op.getType().getSkillReqID()),
+                                Misc.getNegativeHighlightColor());
+                        options.setTooltipHighlights(optionID,
+                                excuse,
+                                hlStr + " aptitude",
+                                required);
+                    } else {
+                        hlStr = hlStr.toLowerCase();
+                        options.setTooltip(optionID, excuse + "\n\nProficiency in " + hlStr + " " + required);
+                        options.setTooltipHighlightColors(optionID,
+                                Misc.getGrayColor(),
+                                Misc.getNegativeHighlightColor(),
+                                Misc.getHighlightColor(),
+                                Misc.getNegativeHighlightColor());
+                        options.setTooltipHighlights(optionID,
+                                excuse,
+                                "Proficiency in",
+                                hlStr,
+                                required);
+                    }
+
                 }
             }
         }

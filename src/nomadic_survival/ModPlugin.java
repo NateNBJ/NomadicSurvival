@@ -30,8 +30,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 import static com.fs.starfarer.api.Global.getSector;
 
@@ -84,6 +84,8 @@ public class ModPlugin extends BaseModPlugin {
 
     public static boolean
             PERILOUS_MODE = false,
+            SIC_IS_ACTIVE = false,
+            ENABLE_PLANET_OPS = true,
             ENABLE_ANOMALY = true,
             ALLOW_ANOMALY_TOGGLE = true,
             SHOW_SORT_OPTIONS = false,
@@ -114,7 +116,7 @@ public class ModPlugin extends BaseModPlugin {
             XP_PER_DATA_EARNED_FROM_TRAVEL = 100,
             MAX_INTEL_ICONS_VISIBLE_AT_ONCE = 100,
             MAX_TRAVEL_RANGE_FOR_PROTECTED_SHIPS = 100;
-    public static String ID, SETTINGS_PATH;
+    public static String ID, SETTINGS_PATH, MOD_NAME = "Nomadic Survival";
 
     static final String
             NOMADIC_SURVIVAL_ID = "sun_nomadic_survival",
@@ -150,6 +152,7 @@ public class ModPlugin extends BaseModPlugin {
     static String getString(String id) throws Exception { return get(id, String.class); }
     static boolean readSettings() {
         try {
+            ENABLE_PLANET_OPS = getBoolean("enablePlanetOps");
             ENABLE_ANOMALY = getBoolean("enableDriveFieldAnomaly");
             ALLOW_ANOMALY_TOGGLE = getBoolean("allowDriveFieldAnomalyToggle");
             SHOW_SORT_OPTIONS = getBoolean("showSortOptions");
@@ -215,7 +218,7 @@ public class ModPlugin extends BaseModPlugin {
     }
     public static boolean reportCrash(Exception exception, boolean displayToUser) {
         try {
-            String stackTrace = "", message = "Nomadic Survival encountered an error!\nPlease let the mod author know.";
+            String stackTrace = "", message = MOD_NAME + " encountered an error!\nPlease let the mod author know.";
 
             for(int i = 0; i < exception.getStackTrace().length; i++) {
                 StackTraceElement ste = exception.getStackTrace()[i];
@@ -259,44 +262,46 @@ public class ModPlugin extends BaseModPlugin {
             intel.addIntel(new AnomalyIntel(), true);
         }
 
-        BarEventManager bar = BarEventManager.getInstance();
+        if(ENABLE_PLANET_OPS) {
+            BarEventManager bar = BarEventManager.getInstance();
 
-        if (!bar.hasEventCreator(SurveyorBarEventCreator.class)) {
-            bar.addEventCreator(new SurveyorBarEventCreator());
-        }
-
-        if(!OperationIntel.isExtant()) {
-            WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
-            boolean temp = MARK_NEW_OP_INTEL_AS_NEW;
-
-            MARK_NEW_OP_INTEL_AS_NEW = false;
-
-            while (!picker.isEmpty()) {
-                PlanetAPI planet = picker.pickAndRemove();
-                boolean isSurveyed = (planet == null || planet.getMarket() == null) ? false
-                        : planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL;
-
-                Util.getOperationsAvailableAtPlanet(planet, isSurveyed);
+            if(!bar.hasEventCreator(SurveyorBarEventCreator.class)) {
+                bar.addEventCreator(new SurveyorBarEventCreator());
             }
 
-            MARK_NEW_OP_INTEL_AS_NEW = temp;
-        } else {
-            Set<String> opTypesAlreadyAdded = getIdsOfAddedOperationTypes();
-            Logger log = Global.getLogger(ModPlugin.class);
+            if(!OperationIntel.isExtant()) {
+                WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
+                boolean temp = MARK_NEW_OP_INTEL_AS_NEW;
 
-            for(String typeId : OperationType.INSTANCE_REGISTRY.keySet()) {
-                if(!opTypesAlreadyAdded.contains(typeId)) {
-                    log.info("Adding new operation type to sector:" + typeId);
+                MARK_NEW_OP_INTEL_AS_NEW = false;
 
-                    WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
+                while(!picker.isEmpty()) {
+                    PlanetAPI planet = picker.pickAndRemove();
+                    boolean isSurveyed = (planet == null || planet.getMarket() == null) ? false
+                            : planet.getMarket().getSurveyLevel() == MarketAPI.SurveyLevel.FULL;
 
-                    while (!picker.isEmpty()) Util.maybeAddOpToPlanet(picker.pickAndRemove(), typeId);
-
-                    opTypesAlreadyAdded.add(typeId);
+                    Util.getOperationsAvailableAtPlanet(planet, isSurveyed);
                 }
-            }
 
-            saveIdsOfAddedOperationTypes(opTypesAlreadyAdded);
+                MARK_NEW_OP_INTEL_AS_NEW = temp;
+            } else {
+                Set<String> opTypesAlreadyAdded = getIdsOfAddedOperationTypes();
+                Logger log = Global.getLogger(ModPlugin.class);
+
+                for(String typeId : OperationType.INSTANCE_REGISTRY.keySet()) {
+                    if(!opTypesAlreadyAdded.contains(typeId)) {
+                        log.info("Adding new operation type to sector:" + typeId);
+
+                        WeightedRandomPicker<PlanetAPI> picker = Util.getPlanetPicker();
+
+                        while(!picker.isEmpty()) Util.maybeAddOpToPlanet(picker.pickAndRemove(), typeId);
+
+                        opTypesAlreadyAdded.add(typeId);
+                    }
+                }
+
+                saveIdsOfAddedOperationTypes(opTypesAlreadyAdded);
+            }
         }
 
         updatedToNewVersion = false;
@@ -441,6 +446,8 @@ public class ModPlugin extends BaseModPlugin {
 
         instance = this;
         PERILOUS_MODE = mm.isModEnabled(PERILOUS_EXPANSE_ID);
+        SIC_IS_ACTIVE = mm.isModEnabled("second_in_command");
+        MOD_NAME = PERILOUS_MODE ? "Perilous Expanse" : MOD_NAME;
         ORIGINAL_FUEL_PRICE = Global.getSettings().getCommoditySpec(Commodities.FUEL).getBasePrice();
         ORIGINAL_SLIPSURGE_FUEL_COST_MULT = GenerateSlipsurgeAbility.FUEL_COST_MULT;
         ORIGINAL_TJUMP_FUEL_COST_MULT = FractureJumpAbility.FUEL_USE_MULT;
@@ -507,7 +514,7 @@ public class ModPlugin extends BaseModPlugin {
 
             version = Global.getSettings().getModManager().getModSpec(ID).getVersion();
 
-            log.info("Nomadic Survival version updated from " + oldVersion + " to " + version);
+            log.info(MOD_NAME + " version updated from " + oldVersion + " to " + version);
             log.info("Performing update diagnostics...");
 
             getSector().getPersistentData().put(VERSION_KEY, version);

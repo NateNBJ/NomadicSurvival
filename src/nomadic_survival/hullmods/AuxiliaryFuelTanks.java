@@ -30,7 +30,7 @@ public class AuxiliaryFuelTanks extends BaseLogisticsHullMod {
         float goalCapacity = capacityScalarPerSize.get(spec.getHullSize()) * RANGE_LIMIT;
         float diff = goalCapacity - spec.getFuel();
 
-        return diff * (forSMod ? FRACTION_SP : FRACTION_NORMAL);
+        return diff <= 0 ? 0 : diff * (forSMod ? FRACTION_SP : FRACTION_NORMAL);
     }
 
     public void applyEffectsBeforeShipCreation(ShipAPI.HullSize hullSize, MutableShipStatsAPI stats, String id) {

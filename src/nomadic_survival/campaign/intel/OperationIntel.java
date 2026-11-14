@@ -6,7 +6,6 @@ import com.fs.starfarer.api.campaign.comm.IntelManagerAPI;
 import com.fs.starfarer.api.campaign.econ.CommoditySpecAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.econ.MarketConditionAPI;
-import com.fs.starfarer.api.characters.SkillSpecAPI;
 import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
 import com.fs.starfarer.api.impl.campaign.ids.Commodities;
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets;
@@ -21,11 +20,12 @@ import com.fs.starfarer.api.util.Misc;
 import com.thoughtworks.xstream.XStream;
 import nomadic_survival.*;
 import nomadic_survival.campaign.OperationInteractionDialogPlugin;
+import nomadic_survival.integration.SecondInCommand;
 import org.lwjgl.util.vector.Vector2f;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 import static nomadic_survival.OperationType.NO_CONDITION_REQUIRED;
 
@@ -196,14 +196,22 @@ public class OperationIntel extends BaseIntelPlugin {
         return isSkillRequired && ModPlugin.ENABLE_SKILL_REQUIREMENTS;
     }
     public boolean isRequiredSkillKnown() {
-        if(!isSkillRequired()) return true;
+        if(!isSkillRequired()) {
+            return true;
+        } else if(ModPlugin.SIC_IS_ACTIVE) {
+            return SecondInCommand.isAptitudeInEffect(getType().getSkillReqID());
+        } else {
+            float skillLevel = Global.getSector().getPlayerStats().getSkillLevel(getType().getSkillReqID());
 
-        float skillLevel = Global.getSector().getPlayerStats().getSkillLevel(getType().getSkillReqID());
-
-        return skillLevel > 0;
+            return skillLevel > 0;
+        }
     }
-    public SkillSpecAPI getRequiredSkill() {
-        return getType().getSkillReqID().isEmpty() ? null : Global.getSettings().getSkillSpec(getType().getSkillReqID());
+    public String getRequiredSkillName() {
+        String skillID = getType().getSkillReqID();
+
+        if(skillID.isEmpty()) return "None";
+        else if(ModPlugin.SIC_IS_ACTIVE) return SecondInCommand.getAptitudeName(skillID);
+        else return Global.getSettings().getSkillSpec(skillID).getName();
     }
     public int getAbundancePerMonth() {
         float retVal = abundancePerMonthFraction * getType().getMaxAbundancePerMonth();
@@ -495,20 +503,30 @@ public class OperationIntel extends BaseIntelPlugin {
 
         if(isSkillRequired()) {
             String para = getType().getSkillReqExcuse() + ". ";
+            String skillName;
             Color hl;
 
-            if(isRequiredSkillKnown()) {
-                para += "Your proficiency in %s makes it possible to ";
-                hl = Misc.getHighlightColor();
+            if(ModPlugin.SIC_IS_ACTIVE) {
+                if(isRequiredSkillKnown()) para += "%s aptitude makes it possible to ";
+                else para += "%s aptitude is required to ";
+
+                skillName = getRequiredSkillName();
+                hl = SecondInCommand.getAptitudeColor(getType().getSkillReqID());
             } else {
-                para += "Proficiency in %s is required to ";
-                hl = Misc.getNegativeHighlightColor();
+                if(isRequiredSkillKnown()) {
+                    para += "Your proficiency in %s makes it possible to ";
+                    hl = Misc.getHighlightColor();
+                } else {
+                    para += "Proficiency in %s is required to ";
+                    hl = Misc.getNegativeHighlightColor();
+                }
+
+                skillName = getRequiredSkillName().toLowerCase();
             }
 
             para += getType().getShortName().toLowerCase() + " on this planet.";
 
-            info.addPara(para, mode == ListInfoMode.IN_DESC ? 0 :10, Misc.getTextColor(), hl,
-                    getRequiredSkill().getName().toLowerCase());
+            info.addPara(para, mode == ListInfoMode.IN_DESC ? 0 :10, Misc.getTextColor(), hl, skillName);
         }
 
         return info;
@@ -717,7 +735,10 @@ public class OperationIntel extends BaseIntelPlugin {
             info.addPara(planet.getName() + ", " + planet.getTypeNameWithWorldLowerCase(), planet.getSpec().getIconColor(), pad);
             info.addPara("Not yet surveyed", Misc.getNegativeHighlightColor(), pad);
         } else if(!isRequiredSkillKnown()) {
-            info.addPara("Requires " + getRequiredSkill().getName(), Misc.getNegativeHighlightColor(), pad);
+            if(ModPlugin.SIC_IS_ACTIVE) {
+                info.addPara("Requires %s aptitude", pad, Misc.getNegativeHighlightColor(),
+                        SecondInCommand.getAptitudeColor(getType().getSkillReqID()), getRequiredSkillName());
+            } else info.addPara("Requires " + getRequiredSkillName(), Misc.getNegativeHighlightColor(), pad);
         } else {
             if(showLocalInfo) {
                 info.addPara(planet.getName() + ", " + planet.getTypeNameWithWorldLowerCase(), planet.getSpec().getIconColor(), pad);
@@ -864,5 +885,9 @@ public class OperationIntel extends BaseIntelPlugin {
         return abundanceCapacityFraction > 0
                 ? getCurrentAbundanceBatches() / (getAbundanceCapacity() / (float)getType().getOutputCountPerBatch())
                 : super.getTimeRemainingFraction();
+    }
+
+    public boolean isHidden() {
+        return !ModPlugin.ENABLE_PLANET_OPS || super.isHidden();
     }
 }
