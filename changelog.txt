@@ -1,0 +1,12 @@
+Version 1.6.0
+
+- Updated for Starsector 0.98.5a
+- Added support for skill (aptitude) requirements while Second In Command is active:
+	- Instead of player skills, the aptitudes of your active executive officers are the requirement for performing some operations
+	- "Enable Skill Requirements" setting is once again enabled by default
+- Added a setting to disable planetary operations
+- Fixed HMI Mess Swarm operation not working due to using a deprecated HMI commodity (hmi_crystal)
+- Fixed drive field anomaly being stabilized when using the "manage exoship" ability from Random Assortment of Things
+
+
+Version changes for older updates can be found at https://github.com/NateNBJ/NomadicSurvival/releases
