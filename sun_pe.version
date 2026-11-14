@@ -1,0 +1,12 @@
+{
+    "masterVersionFile":"https://raw.githubusercontent.com/NateNBJ/NomadicSurvival/master/sun_ns.version",
+    "directDownloadURL":"https://github.com/NateNBJ/NomadicSurvival/releases/latest/download/Perilous.Expanse.zip",
+    "modName":"Perilous Expanse",
+    "modThreadId":29047,
+    "modVersion":
+    {
+        "major":1,
+        "minor":5,
+        "patch":0,
+    },
+}
